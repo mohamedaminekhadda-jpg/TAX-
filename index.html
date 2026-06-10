@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TAX! — Driver</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Sora:wght@600;700;800&display=swap');
+  :root{
+    --bg:#0B0E14; --panel:#121722; --line:#1E2735;
+    --yellow:#FFC107; --yellow-d:#E0A800;
+    --blue:#2E6BFF; --red:#FF4D4D; --green:#22C55E;
+    --txt:#E8EDF5; --mut:#7A8699;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;overflow:hidden;position:fixed;width:100%;}
+  body{font-family:'Barlow Condensed',sans-serif;background:var(--bg);color:var(--txt);display:flex;justify-content:center;}
+  #app{width:100%;max-width:440px;height:100dvh;position:relative;display:grid;grid-template-rows:auto 1fr;background:var(--bg);overflow:hidden;}
+  .disp{font-family:'Sora',sans-serif;}
+
+  /* Header */
+  #hdr{background:linear-gradient(180deg,#141A26,#0B0E14);border-bottom:1px solid var(--line);padding:10px 14px 9px;z-index:600;flex-shrink:0;}
+  .row{display:flex;justify-content:space-between;align-items:flex-start;}
+  .logo{display:flex;align-items:center;gap:8px;}
+  .logo .mark{font-family:'Sora';font-weight:800;font-size:20px;color:var(--bg);background:var(--yellow);padding:1px 9px;border-radius:5px;letter-spacing:-1px;position:relative;}
+  .stripe{display:flex;gap:2px;margin-left:2px;}
+  .stripe i{width:4px;height:18px;border-radius:1px;display:block;}
+  .name{font-size:17px;font-weight:700;color:var(--txt);}
+  .sub{font-size:11px;color:var(--mut);}
+  .stars{color:var(--yellow);font-size:11px;letter-spacing:1px;}
+  .earn{font-family:'Sora';font-size:20px;font-weight:800;color:var(--yellow);line-height:1;}
+  .toggles{display:flex;align-items:center;justify-content:space-between;margin-top:9px;gap:6px;}
+  .seg{display:flex;gap:5px;}
+  .chip{padding:4px 11px;border-radius:20px;border:1px solid var(--line);background:transparent;color:var(--mut);font-size:11px;font-weight:700;letter-spacing:.5px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;}
+  .chip.on{background:var(--yellow);border-color:var(--yellow);color:var(--bg);}
+  .chip.auto.on{background:var(--blue);border-color:var(--blue);color:#fff;}
+  .duty{display:flex;align-items:center;gap:6px;padding:5px 13px;border-radius:20px;border:1px solid var(--green);background:rgba(34,197,94,.12);color:var(--green);font-size:11px;font-weight:700;letter-spacing:.5px;cursor:pointer;font-family:inherit;}
+  .duty.off{border-color:#334155;background:rgba(100,116,139,.1);color:#64748B;}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);}
+  .duty.off .dot{background:#64748B;box-shadow:none;}
+
+  /* Map */
+  #mapwrap{position:relative;overflow:hidden;}
+  #map{position:absolute;inset:0;background:var(--bg);z-index:1;}
+  .leaflet-container{background:#0e1117;font-family:inherit;}
+
+  /* Markers */
+  .taxi-mk{width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:var(--yellow);border:2px solid #fff;border-radius:9px;box-shadow:0 0 16px rgba(255,193,7,.7);font-size:18px;transition:transform .1s linear;}
+  .rider-mk{position:relative;width:34px;height:34px;}
+  .rider-mk .body{width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--panel);border:2px solid var(--yellow);border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 0 12px rgba(255,193,7,.4);}
+  .rider-mk .body span{transform:rotate(45deg);font-size:14px;}
+  .rider-mk.sel .body{background:var(--yellow);}
+  .rider-mk .arrow{position:absolute;top:-8px;left:50%;transform:translateX(-50%);font-size:13px;}
+  .rider-mk.detour .body{border-color:var(--blue);}
+  .fare-tag{background:var(--bg);border:1px solid var(--yellow);color:var(--yellow);font-size:11px;font-weight:700;padding:1px 5px;border-radius:4px;font-family:inherit;white-space:nowrap;}
+  .dest-mk{width:22px;height:22px;background:var(--green);border:2px solid #fff;border-radius:50%;box-shadow:0 0 10px var(--green);display:flex;align-items:center;justify-content:center;font-size:11px;}
+  .detour-mk{width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:#0D1B2E;border:2px solid var(--blue);border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 0 12px rgba(46,107,255,.6);}
+  .detour-mk span{transform:rotate(45deg);font-size:14px;color:var(--blue);}
+
+  /* Meter HUD */
+  #meter{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:550;background:rgba(11,14,20,.92);border:1px solid var(--line);border-radius:12px;padding:8px 16px;display:none;align-items:center;gap:14px;box-shadow:0 4px 20px rgba(0,0,0,.5);}
+  #meter.show{display:flex;}
+  #meter .m-fare{font-family:'Sora';font-size:22px;font-weight:800;color:var(--yellow);line-height:1;}
+  #meter .m-lbl{font-size:9px;color:var(--mut);letter-spacing:1.5px;}
+  #meter .m-div{width:1px;height:26px;background:var(--line);}
+  #meter .m-eta{font-size:13px;color:var(--txt);} #meter .m-eta b{color:var(--green);}
+  .landing{border-color:var(--blue)!important;box-shadow:0 0 22px rgba(46,107,255,.5)!important;}
+
+  /* Bottom sheet */
+  #sheet{position:absolute;left:0;right:0;bottom:0;z-index:600;background:linear-gradient(180deg,rgba(11,14,20,0),var(--bg) 22%);padding:30px 12px 16px;max-height:58%;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;pointer-events:none;}
+  #sheet>*{pointer-events:auto;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px;box-shadow:0 -4px 30px rgba(0,0,0,.5);}
+  .card.active{border-color:var(--yellow);}
+  .lbl{font-size:10px;color:var(--mut);letter-spacing:2px;font-weight:700;}
+  .bigfare{font-family:'Sora';font-size:28px;font-weight:800;color:var(--yellow);line-height:1;}
+  .legs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;}
+  .leg{background:var(--bg);border-radius:9px;padding:10px 12px;}
+  .leg.p{border-left:3px solid var(--yellow);} .leg.d{border-left:3px solid var(--green);}
+  .typebar{display:flex;gap:6px;margin:10px 0 4px;}
+  .tpill{flex:1;text-align:center;padding:6px;border-radius:8px;border:1px solid var(--line);font-size:11px;font-weight:700;letter-spacing:1px;color:var(--mut);}
+  .tpill.normal.on{background:var(--green);border-color:var(--green);color:#fff;}
+  .tpill.smart.on{background:var(--blue);border-color:var(--blue);color:#fff;}
+  .tpill.premium.on{background:var(--yellow);border-color:var(--yellow);color:var(--bg);}
+  .seats{display:flex;gap:4px;align-items:center;}
+  .seat{width:14px;height:14px;border-radius:3px;background:var(--line);}
+  .seat.full{background:var(--yellow);}
+  .btn{border:none;border-radius:9px;font-family:inherit;font-weight:800;cursor:pointer;letter-spacing:1.5px;transition:all .2s;}
+  .accept{flex:2;padding:13px;background:var(--yellow);color:var(--bg);font-size:14px;}
+  .accept:disabled{background:var(--line);color:var(--yellow);}
+  .decline{flex:1;padding:13px;background:transparent;border:1px solid var(--line);color:var(--mut);font-size:13px;}
+  .complete{width:100%;padding:14px;background:var(--yellow);color:var(--bg);font-size:14px;}
+  .ride{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:11px 13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:border-color .15s;}
+  .ride:hover{border-color:var(--yellow);}
+  .compass{font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px;}
+  .compass.fwd{background:rgba(34,197,94,.15);color:var(--green);}
+  .compass.det{background:rgba(46,107,255,.15);color:#7AA0FF;}
+
+  /* Detour / Landing popup */
+  .pop{position:absolute;left:12px;right:12px;bottom:14px;z-index:800;border-radius:14px;padding:14px;transform:translateY(160%);transition:transform .35s cubic-bezier(.2,.9,.3,1.2);}
+  .pop.show{transform:translateY(0);}
+  .pop.detour{background:linear-gradient(135deg,#0D1B2E,#0B0E14);border:1px solid var(--blue);box-shadow:0 0 40px rgba(46,107,255,.4);}
+  .pop.landing{background:linear-gradient(135deg,#1A1300,#0B0E14);border:1px solid var(--yellow);box-shadow:0 0 40px rgba(255,193,7,.4);}
+  .pop-head{font-size:11px;font-weight:800;letter-spacing:1.5px;margin-bottom:9px;}
+  .pop.detour .pop-head{color:#7AA0FF;} .pop.landing .pop-head{color:var(--yellow);}
+  .pop-body{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;}
+  .pop-act{display:flex;gap:8px;}
+  .pskip{flex:1;padding:11px;background:transparent;border:1px solid var(--line);color:var(--mut);font-size:13px;}
+  .ptake{flex:2;padding:11px;font-size:14px;}
+  .pop.detour .ptake{background:var(--blue);color:#fff;}
+  .pop.landing .ptake{background:var(--yellow);color:var(--bg);}
+  .ptimer{height:3px;background:var(--line);border-radius:3px;margin-top:10px;overflow:hidden;}
+  .pbar{height:100%;width:100%;transform-origin:left;}
+  .pop.detour .pbar{background:var(--blue);} .pop.landing .pbar{background:var(--yellow);}
+
+  .toast{position:absolute;top:60px;left:50%;transform:translateX(-50%);z-index:999;background:rgba(11,14,20,.97);border:1px solid var(--yellow);color:var(--txt);padding:9px 18px;border-radius:8px;font-size:13px;letter-spacing:.3px;box-shadow:0 4px 20px rgba(255,193,7,.25);opacity:0;transition:opacity .3s;max-width:88%;text-align:center;}
+  .toast.show{opacity:1;}
+  .hidden{display:none!important;}
+  ::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hdr">
+    <div class="row">
+      <div class="logo">
+        <span class="mark">TAX<span style="color:var(--red)">!</span></span>
+        <div class="stripe"><i style="background:var(--yellow)"></i><i style="background:var(--blue)"></i><i style="background:var(--red)"></i></div>
+        <div style="margin-left:4px;">
+          <div class="name">Youssef B.</div>
+          <div style="display:flex;gap:8px;"><span class="sub">Petit Taxi · A-2841</span><span class="stars">★★★★★</span></div>
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div class="earn disp" id="earn">187 DH</div>
+        <div class="sub" id="trips">9 courses</div>
+      </div>
+    </div>
+    <div class="toggles">
+      <div class="seg">
+        <button class="chip auto" id="autoBtn">✦ AUTO-PILOT</button>
+        <span class="chip" style="cursor:default;"><b id="cnt" style="color:var(--yellow)">0</b>&nbsp;nearby</span>
+      </div>
+      <button class="duty" id="duty"><span class="dot"></span><span id="dutyTxt">EN LIGNE</span></button>
+    </div>
+  </div>
+
+  <div id="mapwrap">
+  <div id="map"></div>
+
+  <div id="meter">
+    <div><div class="m-lbl">COMPTEUR</div><div class="m-fare disp" id="mFare">0 DH</div></div>
+    <div class="m-div"></div>
+    <div class="m-eta" id="mEta"></div>
+  </div>
+
+  <div id="sheet"></div>
+  <div class="toast" id="toast"></div>
+
+  <div class="pop" id="pop">
+    <div class="pop-head" id="popHead"></div>
+    <div class="pop-body" id="popBody"></div>
+    <div class="pop-act">
+      <button class="btn pskip" onclick="skipPop()">SKIP</button>
+      <button class="btn ptake" id="popTake" onclick="takePop()">PICK UP →</button>
+    </div>
+    <div class="ptimer"><div class="pbar" id="pbar"></div></div>
+  </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// Casablanca center
+const CENTER=[33.5899,-7.6039];
+const DRIVER_START=[33.5899,-7.6039];
+const DH=10.4; // pseudo dirham-per-km factor for meter
+
+const RIDERS=[
+  {id:1,name:"Salma E.",  pickup:[33.5950,-7.6180],pickupName:"Boulevard Mohammed V",dropoff:[33.5731,-7.5898],dropName:"Casa Port Station", fare:32,rating:4.9,trips:142,type:"normal",onRoute:true},
+  {id:2,name:"Karim A.",  pickup:[33.5820,-7.6210],pickupName:"Place des Nations Unies",dropoff:[33.6050,-7.6320],dropName:"Maârif",         fare:24,rating:4.7,trips:58, type:"smart", onRoute:false},
+  {id:3,name:"Nadia F.",  pickup:[33.5870,-7.5990],pickupName:"Marché Central",     dropoff:[33.5530,-7.6560],dropName:"Aïn Diab Corniche",fare:46,rating:5.0,trips:301,type:"premium",onRoute:false},
+  {id:4,name:"Hamza T.",  pickup:[33.5930,-7.6080],pickupName:"Parc de la Ligue Arabe",dropoff:[33.5990,-7.6300],dropName:"Gauthier",       fare:18,rating:4.8,trips:87, type:"normal",onRoute:true},
+  {id:5,name:"Imane R.",  pickup:[33.5790,-7.6120],pickupName:"Habous Quarter",     dropoff:[33.5700,-7.5880],dropName:"Casa Port",       fare:28,rating:4.6,trips:219,type:"smart", onRoute:true},
+];
+// route-compatible passengers offered mid-trip (destinations near Casa Port cluster)
+const DETOUR_POOL=[
+  {id:101,name:"Othmane L.",at:[33.5810,-7.5930],atName:"Rue Allal Ben Abdellah",dropoff:[33.5735,-7.5905],dropName:"Casa Port (près)",fare:16,rating:4.8,type:"smart"},
+  {id:102,name:"Sara M.",   at:[33.5775,-7.5955],atName:"Avenue Lalla Yacout", dropoff:[33.5728,-7.5890],dropName:"Casa Port Gare",  fare:14,rating:4.9,type:"smart"},
+];
+// passengers waiting near a drop-off (Landing Radar)
+const LANDING_POOL=[
+  {id:201,name:"Bilal K.", at:[33.5740,-7.5905],atName:"50m from drop-off",dropoff:[33.6010,-7.6300],dropName:"Gauthier",fare:26,rating:4.7,type:"normal"},
+  {id:202,name:"Yasmine D.",at:[33.5725,-7.5890],atName:"40m from drop-off",dropoff:[33.5950,-7.6180],dropName:"Bd Mohammed V",fare:22,rating:4.9,type:"smart"},
+];
+
+let state={riders:[...RIDERS],selected:null,active:null,phase:"idle",online:true,auto:false,
+  earnings:187,trips:9,driverPos:[...DRIVER_START],seats:1,
+  detour:null,pooled:null,paused:false,pendingPop:null,popKind:null,detourOffered:false,landingFired:false};
+
+// Map
+const map=L.map('map',{zoomControl:false,attributionControl:false}).setView(CENTER,14);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'}).addTo(map);
+L.control.zoom({position:'bottomright'}).addTo(map);
+
+const taxiIcon=L.divIcon({className:'',html:'<div class="taxi-mk" id="taxiEl">🚕</div>',iconSize:[36,36],iconAnchor:[18,18]});
+const taxiMarker=L.marker(state.driverPos,{icon:taxiIcon,zIndexOffset:1000}).addTo(map);
+let riderMarkers=[],routeLine=null,destMarker=null,previewLine=null,previewDest=null,popMarker=null;
+
+let toastT;
+function toast(msg){const e=document.getElementById('toast');e.textContent=msg;e.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove('show'),3200);}
+function stars(v){const n=Math.round(v);return '★'.repeat(n)+'☆'.repeat(5-n);}
+function typeColor(t){return t==='premium'?'var(--yellow)':t==='smart'?'var(--blue)':'var(--green)';}
+
+function renderMarkers(){
+  riderMarkers.forEach(m=>map.removeLayer(m));riderMarkers=[];
+  if(!state.online||state.active)return;
+  state.riders.forEach(r=>{
+    const sel=state.selected?.id===r.id;
+    const arrow=r.onRoute?'➡️':'↩️';
+    const icon=L.divIcon({className:'',iconSize:[34,34],iconAnchor:[17,34],
+      html:`<div class="rider-mk ${sel?'sel':''} ${r.onRoute?'':'detour'}">
+        <div class="arrow">${arrow}</div>
+        <div class="body"><span>${sel?'★':'◆'}</span></div>
+        <div class="fare-tag" style="position:absolute;left:38px;top:6px;">${r.fare} DH</div>
+      </div>`});
+    const m=L.marker(r.pickup,{icon}).addTo(map);
+    m.on('click',()=>selectRider(r));riderMarkers.push(m);
+  });
+}
+
+async function getRoute(from,to){
+  try{
+    const url=`https://router.project-osrm.org/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
+    const res=await fetch(url);const d=await res.json();
+    if(d.routes&&d.routes[0])return{coords:d.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]),duration:d.routes[0].duration,distance:d.routes[0].distance};
+  }catch(e){}
+  return{coords:[from,to],duration:120,distance:1500};
+}
+
+let animFrame=null;
+function driveAlong(coords,durationMs,onArrive,onProgress,meterBase=0,legKm=0){
+  if(routeLine)map.removeLayer(routeLine);
+  const dashed=state.phase==="toPickup";
+  routeLine=L.polyline(coords,{color:'#FFC107',weight:5,opacity:.8,dashArray:dashed?'2,9':null,lineCap:'round'}).addTo(map);
+  let segLens=[],total=0;
+  for(let i=0;i<coords.length-1;i++){const d=map.distance(coords[i],coords[i+1]);segLens.push(d);total+=d;}
+  let elapsed=0,last=performance.now();const taxiEl=document.getElementById('taxiEl');
+  function step(now){
+    const dt=now-last;last=now;
+    if(!state.paused)elapsed+=dt;          // freeze progress while paused
+    let t=Math.min(elapsed/durationMs,1);
+    let target=t*total,acc=0,idx=0;
+    while(idx<segLens.length&&acc+segLens[idx]<target){acc+=segLens[idx];idx++;}
+    if(idx>=segLens.length)idx=segLens.length-1;
+    const segT=segLens[idx]?(target-acc)/segLens[idx]:0;
+    const a=coords[idx],b=coords[idx+1]||coords[idx];
+    const lat=a[0]+(b[0]-a[0])*segT,lng=a[1]+(b[1]-a[1])*segT;
+    taxiMarker.setLatLng([lat,lng]);state.driverPos=[lat,lng];
+    const ang=Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI;
+    if(taxiEl)taxiEl.style.transform=`rotate(${ang-90}deg)`;
+    routeLine.setLatLngs(coords.slice(idx));
+    const remain=Math.ceil((1-t)*durationMs/1000);
+    if(state.phase==="toDrop"){
+      const fare=meterBase+legKm*t*DH;
+      document.getElementById('mFare').textContent=Math.round(fare)+' DH';
+    }
+    updateMeterEta(remain);
+    if(onProgress&&!state.paused)onProgress(t);
+    if(!state.paused)map.panTo([lat,lng],{animate:true,duration:.3});
+    if(t<1)animFrame=requestAnimationFrame(step);
+    else{if(taxiEl)taxiEl.style.transform='rotate(0deg)';onArrive();}
+  }
+  animFrame=requestAnimationFrame(step);
+}
+function showMeter(){document.getElementById('meter').classList.add('show');}
+function hideMeter(){document.getElementById('meter').classList.remove('show');document.getElementById('meter').classList.remove('landing');}
+function updateMeterEta(sec){
+  const lbl=state.phase==="toPickup"?"Pickup":"Arrivée";
+  const m=Math.floor(sec/60),s=sec%60;
+  document.getElementById('mEta').innerHTML=`${lbl} <b>${m>0?m+'m ':''}${s}s</b>`;
+}
+
+// ---- preview on select ----
+function clearPreview(){if(previewLine){map.removeLayer(previewLine);previewLine=null;}if(previewDest){map.removeLayer(previewDest);previewDest=null;}}
+async function selectRider(r){
+  state.selected=r;renderMarkers();renderSheet();clearPreview();
+  previewDest=L.marker(r.dropoff,{icon:L.divIcon({className:'',html:'<div class="dest-mk">🏁</div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map);
+  const pv=await getRoute(r.pickup,r.dropoff);
+  if(state.selected?.id===r.id){
+    previewLine=L.polyline(pv.coords,{color:'#22C55E',weight:4,opacity:.7,dashArray:'6,6'}).addTo(map);
+    map.fitBounds(L.latLngBounds([r.pickup,r.dropoff]).pad(0.35),{animate:true});
+  }
+}
+function selectRiderById(id){const r=state.riders.find(x=>x.id===id);if(r)selectRider(r);}
+
+// ---- accept / drive ----
+async function acceptRide(){
+  if(!state.selected)return;clearPreview();
+  const r=state.selected;
+  state.active=r;state.selected=null;state.phase="toPickup";state.seats=1;
+  state.riders=state.riders.filter(x=>x.id!==r.id);
+  state.detourOffered=false;state.landingFired=false;
+  renderMarkers();renderSheet();showMeter();
+  document.getElementById('mFare').textContent='0 DH';
+  toast("Course confirmée — en route vers le client");
+  if(destMarker)map.removeLayer(destMarker);
+  destMarker=L.marker(r.pickup,{icon:L.divIcon({className:'',html:'<div class="dest-mk">👤</div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map);
+  const route=await getRoute(state.driverPos,r.pickup);
+  driveAlong(route.coords,7000,()=>{
+    if(destMarker)map.removeLayer(destMarker);
+    toast(`${r.name} à bord — direction ${r.dropName}`);
+    state.phase="toDrop";renderSheet();
+    destMarker=L.marker(r.dropoff,{icon:L.divIcon({className:'',html:'<div class="dest-mk">🏁</div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map);
+    getRoute(r.pickup,r.dropoff).then(r2=>{
+      const legKm=r2.distance/1000;
+      driveAlong(r2.coords,12000,()=>{
+        if(destMarker)map.removeLayer(destMarker);if(routeLine)map.removeLayer(routeLine);
+        finishTrip();
+      },(t)=>{
+        // IV.3 Smart pooling detour offer ~40%
+        if(!state.detourOffered&&!state.detour&&state.seats<3&&t>0.4&&t<0.7){
+          state.detourOffered=true;offerPop('detour');
+        }
+        // IV.4 Landing Radar at ~500m before drop-off (~last 15%)
+        if(!state.landingFired&&t>0.85){
+          state.landingFired=true;
+          document.getElementById('meter').classList.add('landing');
+          offerPop('landing');
+        }
+      },0,legKm);
+    });
+  });
+}
+
+// ---- popups (detour + landing share UI) ----
+let popTimer=null;
+function offerPop(kind){
+  let cand;
+  if(kind==='detour'){
+    // choose the candidate whose destination is closest to the current passenger's
+    cand=[...DETOUR_POOL].sort((a,b)=>
+      map.distance(a.dropoff,state.active.dropoff)-map.distance(b.dropoff,state.active.dropoff))[0];
+  }else{
+    cand=LANDING_POOL[Math.floor(Math.random()*LANDING_POOL.length)];
+  }
+  state.pendingPop=cand;state.popKind=kind;
+  const at=cand.at;
+  if(popMarker)map.removeLayer(popMarker);
+  popMarker=L.marker(at,{icon:L.divIcon({className:'',html:`<div class="detour-mk"><span>＋</span></div>`,iconSize:[30,30],iconAnchor:[15,30]})}).addTo(map);
+  const pop=document.getElementById('pop');
+  pop.className='pop '+kind;
+  document.getElementById('popTake').textContent=kind==='detour'?'PICK UP ON WAY →':'SECURE NEXT →';
+  document.getElementById('popHead').textContent=kind==='detour'?'➡️ PASSENGER ALONG YOUR ROUTE':'📡 LANDING RADAR — NEXT FARE';
+  const shareKm=kind==='detour'?(map.distance(cand.dropoff,state.active.dropoff)/1000).toFixed(1):null;
+  const note=kind==='detour'
+    ?`→ ${cand.dropName} · drop-off only ${shareKm} km from current · shared ride`
+    :`Waiting ${cand.atName} · ready when you drop off`;
+  document.getElementById('popBody').innerHTML=`
+    <div>
+      <div style="font-size:18px;font-weight:700;color:var(--txt);">${cand.name}</div>
+      <div class="sub" style="margin-top:2px;">📍 ${cand.atName}</div>
+      <div style="font-size:11px;color:${kind==='detour'?'#7AA0FF':'var(--yellow)'};margin-top:3px;">${note}</div>
+      <div style="margin-top:3px;"><span class="stars">${stars(cand.rating)}</span></div>
+    </div>
+    <div style="text-align:right;"><div class="bigfare" style="font-size:22px;">+${cand.fare} DH</div></div>`;
+  pop.classList.add('show');
+  state.paused=true;                       // freeze taxi + ETA while deciding
+  toast(kind==='detour'?'Passager sur votre trajet — taxi en attente':'Prochain client détecté près de l\'arrivée');
+  const bar=document.getElementById('pbar');
+  bar.style.transition='none';bar.style.transform='scaleX(1)';
+  requestAnimationFrame(()=>{bar.style.transition='transform 12s linear';bar.style.transform='scaleX(0)';});
+  clearTimeout(popTimer);popTimer=setTimeout(skipPop,12000);
+  // auto-pilot auto-accepts
+  if(state.auto)setTimeout(()=>{if(state.pendingPop===cand)takePop();},1400);
+}
+function hidePop(){document.getElementById('pop').classList.remove('show');clearTimeout(popTimer);}
+function skipPop(){
+  hidePop();
+  if(popMarker){map.removeLayer(popMarker);popMarker=null;}
+  state.pendingPop=null;
+  state.paused=false;                      // resume current trip
+}
+function takePop(){
+  const cand=state.pendingPop;const kind=state.popKind;
+  hidePop();
+  if(!cand){state.paused=false;return;}
+  state.pendingPop=null;
+
+  if(kind==='detour'){
+    // DIVERT NOW: stop current drop-off, go pick up the on-route passenger,
+    // then drive both to the (shared) destination.
+    if(animFrame)cancelAnimationFrame(animFrame);
+    const first=state.active;            // passenger already on board
+    state.seats=Math.min(3,state.seats+1);
+    state.pooled=cand;                   // remember 2nd passenger
+    state.paused=false;
+    toast(`Détour — récupération de ${cand.name} (siège ${state.seats}/3)`);
+
+    if(popMarker)map.removeLayer(popMarker);
+    if(destMarker)map.removeLayer(destMarker);
+    state.phase="toPickup";renderSheet();
+    // marker at the new passenger's pickup
+    destMarker=L.marker(cand.at,{icon:L.divIcon({className:'',html:'<div class="detour-mk"><span>👤</span></div>',iconSize:[30,30],iconAnchor:[15,30]})}).addTo(map);
+    getRoute(state.driverPos,cand.at).then(rt=>{
+      driveAlong(rt.coords,5500,()=>{
+        if(destMarker)map.removeLayer(destMarker);
+        state.seats=state.seats;        // both aboard now
+        toast(`${cand.name} à bord — direction ${cand.dropName}`);
+        state.phase="toDrop";renderSheet();
+        // shared destination: drive to the nearer drop, then the other if needed.
+        const stops=orderStops(state.driverPos,first,cand);
+        runStops(stops);
+      },null,0,0);
+    });
+    return;
+  }
+  // landing: queue as the next trip after current completes
+  state.detour=cand;
+  state.paused=false;
+  toast(`Prochaine course sécurisée : ${cand.name}`);
+}
+
+// order the two drop-offs by distance from current position (closest first)
+function orderStops(from,p1,p2){
+  const d1=map.distance(from,p1.dropoff),d2=map.distance(from,p2.dropoff);
+  const a={name:p1.name,dropoff:p1.dropoff,dropName:p1.dropName,fare:p1.fare};
+  const b={name:p2.name,dropoff:p2.dropoff,dropName:p2.dropName,fare:p2.fare};
+  return d1<=d2?[a,b]:[b,a];
+}
+// drive sequentially through drop-off stops, dropping each passenger
+function runStops(stops){
+  let i=0;
+  function next(){
+    if(i>=stops.length){ // all delivered
+      if(routeLine)map.removeLayer(routeLine);
+      state.pooled=null;
+      finishPooled(stops);
+      return;
+    }
+    const stop=stops[i];
+    if(destMarker)map.removeLayer(destMarker);
+    destMarker=L.marker(stop.dropoff,{icon:L.divIcon({className:'',html:'<div class="dest-mk">🏁</div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map);
+    getRoute(state.driverPos,stop.dropoff).then(rt=>{
+      driveAlong(rt.coords,Math.max(5000,Math.min(11000,rt.distance*6)),()=>{
+        if(destMarker)map.removeLayer(destMarker);
+        state.seats=Math.max(1,state.seats-1);
+        toast(`${stop.name} déposé${i<stops.length-1?' — passager suivant':''}`);
+        i++;next();
+      },null,(i*0)+0, rt.distance/1000);
+    });
+  }
+  next();
+}
+function finishPooled(stops){
+  const total=stops.reduce((s,x)=>s+x.fare,0);
+  state.earnings+=total;state.trips+=stops.length;
+  document.getElementById('earn').textContent=state.earnings+' DH';
+  document.getElementById('trips').textContent=state.trips+' courses';
+  toast(`+${total} DH — course partagée terminée ✓`);
+  hideMeter();state.active=null;state.pooled=null;state.seats=1;state.phase="idle";
+  renderMarkers();renderSheet();
+  if(state.auto)setTimeout(autoPick,1200);
+}
+window.skipPop=skipPop;window.takePop=takePop;
+
+function finishTrip(){
+  const r=state.active;
+  state.earnings+=r.fare;state.trips+=1;
+  document.getElementById('earn').textContent=state.earnings+' DH';
+  document.getElementById('trips').textContent=state.trips+' courses';
+  if(state.detour){
+    const d=state.detour;state.detour=null;state.seats=1;
+    toast(`${r.name} déposé. Prochain : ${d.name}`);
+    if(popMarker){map.removeLayer(popMarker);popMarker=null;}
+    hideMeter();showMeter();document.getElementById('mFare').textContent='0 DH';
+    const pickupPt=d.at;
+    state.active={id:d.id,name:d.name,pickup:pickupPt,pickupName:d.atName,dropoff:d.dropoff,dropName:d.dropName,fare:d.fare,rating:d.rating,type:d.type};
+    state.phase="toPickup";renderSheet();
+    state.detourOffered=true;state.landingFired=true;
+    destMarker=L.marker(pickupPt,{icon:L.divIcon({className:'',html:'<div class="dest-mk">👤</div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map);
+    getRoute(state.driverPos,pickupPt).then(rt=>{
+      driveAlong(rt.coords,6000,()=>{
+        if(destMarker)map.removeLayer(destMarker);
+        toast(`${d.name} à bord — direction ${d.dropName}`);
+        state.phase="toDrop";renderSheet();
+        destMarker=L.marker(d.dropoff,{icon:L.divIcon({className:'',html:'<div class="dest-mk">🏁</div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map);
+        getRoute(pickupPt,d.dropoff).then(rt2=>{
+          driveAlong(rt2.coords,9000,()=>{
+            if(destMarker)map.removeLayer(destMarker);if(routeLine)map.removeLayer(routeLine);
+            finishTrip();
+          },null,0,rt2.distance/1000);
+        });
+      });
+    });
+    return;
+  }
+  toast(`+${r.fare} DH — Course terminée ✓`);
+  hideMeter();state.active=null;state.phase="idle";renderMarkers();renderSheet();
+  if(state.auto)setTimeout(autoPick,1200);
+}
+
+function declineRide(){clearPreview();state.selected=null;renderMarkers();renderSheet();}
+function toggleDuty(){if(state.active)return;state.online=!state.online;const d=document.getElementById('duty');d.classList.toggle('off',!state.online);document.getElementById('dutyTxt').textContent=state.online?'EN LIGNE':'HORS LIGNE';state.selected=null;renderMarkers();renderSheet();}
+document.getElementById('duty').onclick=toggleDuty;
+
+// Auto-pilot (IV.2)
+function autoPick(){
+  if(!state.auto||state.active||!state.online||state.riders.length===0)return;
+  // prefer on-route passengers, highest fare
+  const sorted=[...state.riders].sort((a,b)=>(b.onRoute-a.onRoute)||(b.fare-a.fare));
+  selectRider(sorted[0]);
+  setTimeout(()=>{if(state.selected)acceptRide();},900);
+}
+document.getElementById('autoBtn').onclick=()=>{
+  state.auto=!state.auto;
+  document.getElementById('autoBtn').classList.toggle('on',state.auto);
+  toast(state.auto?'Auto-Pilot activé — scan automatique':'Auto-Pilot désactivé');
+  if(state.auto)autoPick();
+};
+
+// ---- sheet ----
+function seatHtml(n){let h='<div class="seats">';for(let i=0;i<3;i++)h+=`<div class="seat ${i<n?'full':''}"></div>`;h+='</div>';return h;}
+function renderSheet(){
+  const s=document.getElementById('sheet');
+  document.getElementById('cnt').textContent=state.riders.length;
+  if(!state.online){s.innerHTML=`<div style="text-align:center;padding:28px 0;color:var(--mut);"><div style="font-size:38px;">🚕</div><div style="font-size:15px;margin-top:8px;">Hors ligne</div><div class="sub" style="margin-top:6px;">Passez en ligne pour recevoir des courses</div></div>`;return;}
+  if(state.active){
+    const r=state.active;
+    const head=state.phase==="toPickup"?'● VERS LE CLIENT':'● CLIENT À BORD';
+    s.innerHTML=`<div class="card active">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div class="lbl" style="color:var(--yellow);background:rgba(255,193,7,.12);padding:3px 8px;border-radius:5px;">${head}</div>
+        <div class="bigfare" style="font-size:22px;">${r.fare} DH</div>
+      </div>
+      <div style="font-size:20px;font-weight:700;">${r.name}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+        <span class="sub">Capacité</span>${seatHtml(state.seats)}
+      </div>
+      <div class="legs">
+        <div class="leg p"><div class="lbl">DÉPART</div><div style="font-size:12px;">${r.pickupName}</div></div>
+        <div class="leg d"><div class="lbl">ARRIVÉE</div><div style="font-size:12px;">${r.dropName}</div></div>
+      </div>
+      <div style="text-align:center;color:var(--mut);font-size:12px;letter-spacing:1px;">Trajet en cours · compteur actif</div>
+    </div>`;return;
+  }
+  if(state.selected){
+    const r=state.selected;
+    s.innerHTML=`<div class="card">
+      <div class="row" style="margin-bottom:8px;">
+        <div><div class="lbl">DEMANDE DE COURSE</div>
+          <div style="font-size:22px;font-weight:700;">${r.name}</div>
+          <div style="margin-top:3px;"><span class="stars">${stars(r.rating)}</span><span class="sub"> ${r.rating} · ${r.trips} courses</span></div>
+        </div>
+        <div style="text-align:right;"><div class="bigfare">${r.fare} DH</div>
+          <span class="compass ${r.onRoute?'fwd':'det'}" style="margin-top:4px;display:inline-block;">${r.onRoute?'➡️ Sur trajet':'↩️ Détour'}</span>
+        </div>
+      </div>
+      <div class="typebar">
+        <div class="tpill normal ${r.type==='normal'?'on':''}">NORMAL</div>
+        <div class="tpill smart ${r.type==='smart'?'on':''}">SMART</div>
+        <div class="tpill premium ${r.type==='premium'?'on':''}">PREMIUM</div>
+      </div>
+      <div class="legs">
+        <div class="leg p"><div class="lbl">DÉPART</div><div style="font-size:13px;font-weight:600;">${r.pickupName}</div></div>
+        <div class="leg d"><div class="lbl">ARRIVÉE</div><div style="font-size:13px;font-weight:600;">${r.dropName}</div></div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn decline" onclick="declineRide()">REFUSER</button>
+        <button class="btn accept" onclick="acceptRide()">OFFRIR PICKUP →</button>
+      </div>
+    </div>`;return;
+  }
+  if(state.riders.length===0){s.innerHTML=`<div style="text-align:center;padding:28px 0;color:var(--mut);"><div style="font-size:30px;">🚕</div><div style="margin-top:8px;">Aucune demande à proximité</div></div>`;return;}
+  s.innerHTML=`<div class="lbl" style="margin-bottom:10px;">CARTE DE DEMANDE — ${state.riders.length} CLIENTS</div>`+
+    state.riders.map(r=>`<div class="ride" onclick='selectRiderById(${r.id})'>
+      <div>
+        <div style="font-weight:700;font-size:16px;display:flex;align-items:center;gap:6px;">${r.name}
+          <span class="compass ${r.onRoute?'fwd':'det'}">${r.onRoute?'➡️':'↩️'}</span></div>
+        <div class="sub" style="margin-top:2px;">📍 ${r.pickupName}</div>
+        <div style="font-size:11px;color:var(--mut);margin-top:1px;">→ ${r.dropName}</div>
+      </div>
+      <div style="text-align:right;min-width:62px;">
+        <div style="font-family:'Sora';font-size:18px;font-weight:800;color:var(--yellow);">${r.fare} DH</div>
+        <div style="font-size:10px;color:${typeColor(r.type)};font-weight:700;margin-top:2px;text-transform:uppercase;">${r.type}</div>
+      </div></div>`).join('');
+}
+
+renderMarkers();renderSheet();
+setTimeout(()=>map.invalidateSize(),120);
+window.addEventListener('resize',()=>map.invalidateSize());
+</script>
+</body>
+</html>
