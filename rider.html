@@ -91,6 +91,71 @@
   ::-webkit-scrollbar{width:0;}
   @keyframes sheetRise{from{opacity:0;transform:translateY(28px) scale(.98);}to{opacity:1;transform:translateY(0) scale(1);}}
   @keyframes fadeDown{from{opacity:0;transform:translateY(-12px);}to{opacity:1;transform:translateY(0);}}
+
+  /* Passenger stepper */
+  .paxrow{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:4px 2px;}
+  .stepper{display:flex;align-items:center;gap:14px;background:rgba(10,12,16,.5);border:1px solid var(--stroke);border-radius:100px;padding:5px 8px;}
+  .stepper button{width:30px;height:30px;border-radius:50%;border:none;background:var(--glass-hi);color:var(--txt);font-size:18px;font-weight:700;cursor:pointer;transition:transform .15s var(--ease),opacity .2s;}
+  .stepper button:active{transform:scale(.9);}
+  .stepper button:disabled{opacity:.3;}
+  .paxn{font-family:'Sora';font-size:17px;font-weight:700;min-width:14px;text-align:center;}
+
+  /* Review stars */
+  .rate{display:flex;gap:8px;justify-content:center;margin:10px 0 14px;}
+  .star{font-size:32px;color:var(--stroke-hi);cursor:pointer;transition:transform .2s var(--ease),color .2s;}
+  .star:active{transform:scale(1.2);}
+  .star.on{color:var(--amber);text-shadow:0 0 14px var(--amber-glow);}
+
+  /* Floating action buttons */
+  .fab-stack{position:absolute;right:14px;bottom:calc(34% + 14px);z-index:620;display:flex;flex-direction:column;gap:10px;}
+  .fab{width:48px;height:48px;border-radius:50%;border:1px solid var(--stroke-hi);backdrop-filter:blur(20px) saturate(1.3);
+    font-size:20px;cursor:pointer;box-shadow:var(--shadow);transition:transform .2s var(--ease);}
+  .fab:active{transform:scale(.9);}
+  .fab.safety{background:rgba(255,90,90,.18);border-color:rgba(255,90,90,.4);}
+  .fab.phrase{background:var(--glass);}
+
+  /* Slide-up panel */
+  .scrim{position:absolute;inset:0;z-index:900;background:rgba(0,0,0,.5);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity .4s var(--ease);}
+  .scrim.show{opacity:1;pointer-events:auto;}
+  .panel{position:absolute;left:0;right:0;bottom:0;z-index:910;background:var(--glass);backdrop-filter:blur(30px) saturate(1.4);
+    border-top:1px solid var(--stroke-hi);border-radius:26px 26px 0 0;padding:14px 16px 22px;max-height:78%;overflow-y:auto;
+    box-shadow:var(--shadow);transform:translateY(110%);transition:transform .5s var(--ease);}
+  .panel.show{transform:translateY(0);}
+  .panel h2{font-family:'Sora';font-size:20px;font-weight:800;letter-spacing:-0.02em;margin-bottom:4px;}
+  .sos-btn{width:100%;padding:18px;margin-top:14px;border:none;border-radius:var(--r-md);background:linear-gradient(135deg,#ff7676,var(--red));
+    color:#fff;font-family:inherit;font-weight:800;font-size:17px;letter-spacing:.5px;cursor:pointer;box-shadow:0 8px 28px rgba(255,90,90,.45);
+    display:flex;align-items:center;justify-content:center;gap:10px;transition:transform .2s var(--ease);}
+  .sos-btn:active{transform:scale(.97);}
+  .safe-tip{display:flex;gap:11px;align-items:flex-start;padding:13px;margin-top:9px;background:rgba(10,12,16,.5);border:1px solid var(--stroke);border-radius:var(--r-md);}
+  .safe-tip .si{font-size:18px;}
+  .phrase-card{padding:14px;margin-top:9px;background:rgba(10,12,16,.5);border:1px solid var(--stroke);border-radius:var(--r-md);
+    display:flex;justify-content:space-between;align-items:center;gap:12px;}
+  .phrase-card .fr{font-size:13px;color:var(--txt2);}
+  .phrase-card .da{font-family:'Sora';font-size:16px;font-weight:700;margin-top:3px;}
+  .phrase-card .play{width:42px;height:42px;border-radius:50%;border:1px solid var(--stroke-hi);background:var(--glass-hi);color:var(--amber);
+    font-size:16px;cursor:pointer;flex-shrink:0;transition:transform .15s var(--ease);}
+  .phrase-card .play:active{transform:scale(.88);}
+  .seg-tabs{display:flex;gap:7px;margin:12px 0;}
+  .seg-tabs button{flex:1;padding:9px;border-radius:var(--r-sm);border:1px solid var(--stroke);background:transparent;color:var(--txt3);
+    font-family:inherit;font-weight:600;font-size:12px;cursor:pointer;transition:all .25s var(--ease);}
+  .seg-tabs button.on{background:var(--glass-hi);border-color:var(--stroke-hi);color:var(--txt);}
+
+  /* Roaming-taxi popup */
+  .taxi-pop{padding:4px 2px;min-width:180px;}
+  .taxi-pop .tt{font-family:'Sora';font-weight:700;font-size:15px;}
+  .taxi-pop .meta{font-size:12px;color:var(--txt2);margin-top:3px;}
+  .taxi-pop .seats-mini{display:flex;gap:3px;margin-top:7px;}
+  .taxi-pop .sm{width:11px;height:11px;border-radius:3px;background:var(--stroke-hi);}
+  .taxi-pop .sm.full{background:var(--amber);}
+  .taxi-pop button{width:100%;margin-top:10px;padding:9px;border:none;border-radius:9px;background:linear-gradient(135deg,var(--amber-soft),var(--amber));
+    color:#0A0C10;font-family:inherit;font-weight:800;font-size:13px;cursor:pointer;}
+  .taxi-pop button:disabled{background:var(--stroke-hi);color:var(--txt3);}
+  .leaflet-popup-content-wrapper{background:var(--glass)!important;backdrop-filter:blur(24px) saturate(1.4);border:1px solid var(--stroke-hi);
+    border-radius:var(--r-md)!important;color:var(--txt)!important;box-shadow:var(--shadow)!important;}
+  .leaflet-popup-tip{background:var(--glass)!important;}
+  .leaflet-popup-close-button{color:var(--txt2)!important;}
+  .roam-mk{width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:rgba(255,176,0,.18);
+    border:1.5px solid var(--amber);border-radius:8px;font-size:14px;box-shadow:0 2px 10px var(--amber-glow);}
   @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;}}
 </style>
 </head>
@@ -103,8 +168,22 @@
   </div>
   <div id="mapwrap">
     <div id="map"></div>
+
+    <!-- Floating safety + phrasebook buttons -->
+    <div class="fab-stack">
+      <button class="fab phrase" onclick="openPanel('phrase')" aria-label="Phrases utiles">💬</button>
+      <button class="fab safety" onclick="openPanel('safety')" aria-label="Sécurité">🛡️</button>
+    </div>
+
     <div id="sheet"></div>
     <div class="toast" id="toast"></div>
+
+    <!-- Slide-up panel (safety / phrasebook) -->
+    <div class="scrim" id="scrim" onclick="closePanel()"></div>
+    <div class="panel" id="panel">
+      <div class="grab"></div>
+      <div id="panelBody"></div>
+    </div>
   </div>
 </div>
 
@@ -117,7 +196,48 @@ const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
 const CENTER=[33.5899,-7.6039];
 const DH=10.4;
-let state={step:'set',pickup:null,drop:null,settingMode:'pickup',type:'normal',ride:null};
+
+// ---- Built-in Casablanca landmarks (repères) for naming places ----
+const LANDMARKS=[
+  {n:"Place Mohammed V",lat:33.5928,lng:-7.6192},
+  {n:"Marché Central",lat:33.5969,lng:-7.6175},
+  {n:"Boulevard Mohammed V",lat:33.5940,lng:-7.6150},
+  {n:"Gare Casa-Port",lat:33.5993,lng:-7.6087},
+  {n:"Gare Casa-Voyageurs",lat:33.5870,lng:-7.5560},
+  {n:"Place des Nations Unies",lat:33.5950,lng:-7.6180},
+  {n:"Mosquée Hassan II",lat:33.6083,lng:-7.6325},
+  {n:"Quartier Habous",lat:33.5790,lng:-7.6120},
+  {n:"Parc de la Ligue Arabe",lat:33.5910,lng:-7.6080},
+  {n:"Maârif",lat:33.5860,lng:-7.6320},
+  {n:"Gauthier",lat:33.5950,lng:-7.6250},
+  {n:"Corniche Aïn Diab",lat:33.5970,lng:-7.6760},
+  {n:"Morocco Mall",lat:33.5760,lng:-7.7050},
+  {n:"Twin Center",lat:33.5870,lng:-7.6310},
+  {n:"Anfa",lat:33.5870,lng:-7.6520},
+  {n:"Derb Ghallef",lat:33.5790,lng:-7.6230},
+  {n:"Place Oued El Makhazine",lat:33.5900,lng:-7.6360},
+  {n:"Boulevard d'Anfa",lat:33.5910,lng:-7.6300},
+  {n:"Sidi Belyout",lat:33.6010,lng:-7.6160},
+  {n:"Aéroport Mohammed V",lat:33.3675,lng:-7.5898}
+];
+function nearestLandmark(lat,lng){
+  let best=null,bd=1e9;
+  for(const L of LANDMARKS){
+    const d=Math.hypot(L.lat-lat,L.lng-lng);
+    if(d<bd){bd=d;best=L;}
+  }
+  // distance in meters (rough) to describe proximity
+  const meters=Math.round(bd*111000);
+  return {name:best.n, meters};
+}
+function placeLabel(lat,lng){
+  const {name,meters}=nearestLandmark(lat,lng);
+  if(meters<120) return name;
+  if(meters<700) return `Près de ${name}`;
+  return name;
+}
+
+let state={step:'set',pickup:null,drop:null,pickupName:'',dropName:'',settingMode:'pickup',type:'normal',pax:1,ride:null};
 
 const map=L.map('map',{zoomControl:false,attributionControl:false}).setView(CENTER,14);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'}).addTo(map);
@@ -131,11 +251,13 @@ map.on('click',e=>{
   const pt=[e.latlng.lat,e.latlng.lng];
   if(state.settingMode==='pickup'){
     state.pickup=pt;
+    state.pickupName=placeLabel(pt[0],pt[1]);
     if(pickupMk)map.removeLayer(pickupMk);
     pickupMk=L.marker(pt,{icon:L.divIcon({className:'',html:'<div class="me-mk"></div>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(map);
     state.settingMode='drop';toast('Maintenant, touchez votre destination');
   }else{
     state.drop=pt;
+    state.dropName=placeLabel(pt[0],pt[1]);
     if(dropMk)map.removeLayer(dropMk);
     dropMk=L.marker(pt,{icon:L.divIcon({className:'',html:'<div class="pin-mk"></div>',iconSize:[22,22],iconAnchor:[11,22]})}).addTo(map);
   }
@@ -165,9 +287,9 @@ async function requestRide(){
   const fare=fareFor(state.type);
   const {data,error}=await sb.from('rides').insert({
     rider_name:'Rider',
-    pickup_name:'Point de départ',pickup_lat:state.pickup[0],pickup_lng:state.pickup[1],
-    drop_name:'Destination',drop_lat:state.drop[0],drop_lng:state.drop[1],
-    fare,ride_type:state.type,status:'waiting'
+    pickup_name:state.pickupName||'Point de départ',pickup_lat:state.pickup[0],pickup_lng:state.pickup[1],
+    drop_name:state.dropName||'Destination',drop_lat:state.drop[0],drop_lng:state.drop[1],
+    fare,ride_type:state.type,pax:state.pax,preferred_driver:state.preferredDriver||null,status:'waiting'
   }).select().single();
   if(error){toast('Erreur — réessayez');console.error(error);return;}
   state.ride=data;state.step='waiting';renderSheet();
@@ -218,58 +340,203 @@ async function cancelRide(){
   resetAll();
 }
 function resetAll(){
-  state={step:'set',pickup:null,drop:null,settingMode:'pickup',type:'normal',ride:null};
+  state={step:'set',pickup:null,drop:null,pickupName:'',dropName:'',settingMode:'pickup',type:'normal',pax:1,ride:null};
   [pickupMk,dropMk,routeLine,taxiMk].forEach(m=>{if(m)map.removeLayer(m);});
   pickupMk=dropMk=routeLine=taxiMk=null;estKm=0;
-  map.setView(CENTER,14);renderSheet();
+  renderSheet();
 }
 window.requestRide=requestRide;window.cancelRide=cancelRide;window.resetAll=resetAll;
 window.setType=t=>{state.type=t;renderSheet();};
+window.setPax=d=>{state.pax=Math.max(1,Math.min(3,state.pax+d));renderSheet();};
 window.setMode=m=>{state.settingMode=m;toast(m==='pickup'?'Touchez votre position':'Touchez votre destination');};
+window.setStars=n=>{state.reviewStars=n;renderSheet();};
+window.submitReview=async()=>{
+  if(state.ride&&state.reviewStars){
+    await sb.from('rides').update({rating_given:state.reviewStars}).eq('id',state.ride.id);
+  }
+  toast('Merci pour votre évaluation !');
+  setTimeout(resetAll,900);
+};
 
 function renderSheet(){
   const s=document.getElementById('sheet');
   if(state.step==='set'){
     const ready=state.pickup&&state.drop;
-    s.innerHTML=`<div class="card">
+    s.innerHTML=`<div class="card"><div class="grab"></div>
       <div class="lbl">Votre trajet</div>
       <div class="field pickup" onclick="setMode('pickup')"><span class="ic"></span>
-        <input readonly placeholder="Touchez la carte pour le départ" value="${state.pickup?'Point de départ défini':''}"></div>
+        <input readonly placeholder="Touchez la carte pour le départ" value="${state.pickup?state.pickupName:''}"></div>
       <div class="field drop" onclick="setMode('drop')"><span class="ic"></span>
-        <input readonly placeholder="Touchez la carte pour la destination" value="${state.drop?'Destination définie':''}"></div>
+        <input readonly placeholder="Touchez la carte pour la destination" value="${state.drop?state.dropName:''}"></div>
+      <div class="paxrow">
+        <span class="lbl" style="text-transform:none;letter-spacing:.3px;font-size:13px;color:var(--txt2);">Passagers</span>
+        <div class="stepper">
+          <button onclick="setPax(-1)" ${state.pax<=1?'disabled':''}>−</button>
+          <span class="paxn">${state.pax}</span>
+          <button onclick="setPax(1)" ${state.pax>=3?'disabled':''}>+</button>
+        </div>
+      </div>
       <div class="types">
         ${['normal','smart','premium'].map(t=>`<div class="tp ${t} ${state.type===t?'on':''}" onclick="setType('${t}')">
-          <div class="n">${t.toUpperCase()}</div><div class="p">${ready?fareFor(t)+' DH':'—'}</div></div>`).join('')}
+          <div class="n">${t[0].toUpperCase()+t.slice(1)}</div><div class="p">${ready?fareFor(t)+' DH':'—'}</div></div>`).join('')}
       </div>
-      ${ready?`<div class="est"><span class="sub">${estKm.toFixed(1)} km estimés</span><span class="f">${fareFor(state.type)} DH</span></div>`:''}
+      ${ready?`<div class="est"><span class="sub">${estKm.toFixed(1)} km · ${state.pax} passager${state.pax>1?'s':''}</span><span class="f">${fareFor(state.type)} DH</span></div>`:''}
       <button class="btn" ${ready?'':'disabled'} onclick="requestRide()">${ready?'Commander le taxi':'Touchez la carte pour commencer'}</button>
     </div>`;
   }else if(state.step==='waiting'){
-    s.innerHTML=`<div class="card">
+    s.innerHTML=`<div class="card"><div class="grab"></div>
       <div class="status-row"><div class="pulse"></div><div style="font-size:17px;font-weight:700;">Recherche d'un taxi…</div></div>
       <div class="sub">Diffusion aux taxis à proximité</div>
       <div class="est"><span class="sub">Tarif estimé</span><span class="f">${state.ride.fare} DH</span></div>
-      <button class="btn cancel" onclick="cancelRide()">ANNULER</button>
+      <button class="btn cancel" onclick="cancelRide()">Annuler</button>
     </div>`;
   }else if(state.step==='accepted'||state.step==='onboard'){
-    s.innerHTML=`<div class="card">
+    s.innerHTML=`<div class="card"><div class="grab"></div>
       <div class="status-row"><div class="pulse go"></div>
         <div style="font-size:17px;font-weight:700;">${state.step==='accepted'?'Taxi en route vers vous':'En route — compteur actif'}</div></div>
-      <div class="lbl" style="margin-top:10px;">COMPTEUR</div>
+      <div class="lbl" style="margin-top:10px;">Compteur</div>
       <div class="meter-big">${state.ride.fare} DH</div>
       <div class="sub" style="margin-top:4px;">Tarif transparent · vérifié par GPS</div>
-      <button class="btn cancel" onclick="cancelRide()">ANNULER</button>
+      <button class="btn cancel" onclick="cancelRide()">Annuler</button>
     </div>`;
   }else if(state.step==='done'){
-    s.innerHTML=`<div class="card" style="text-align:center;">
+    const rated=state.reviewStars||0;
+    s.innerHTML=`<div class="card" style="text-align:center;"><div class="grab"></div>
       <div style="font-size:34px;">✅</div>
       <div style="font-size:18px;font-weight:700;margin-top:6px;">Course terminée</div>
       <div class="meter-big" style="margin-top:8px;">${state.ride.fare} DH</div>
-      <button class="btn" onclick="resetAll()">NOUVELLE COURSE</button>
+      <div class="lbl" style="margin-top:16px;">Évaluez votre chauffeur</div>
+      <div class="rate" id="rateStars">
+        ${[1,2,3,4,5].map(i=>`<span class="star ${i<=rated?'on':''}" onclick="setStars(${i})">★</span>`).join('')}
+      </div>
+      ${rated?`<button class="btn" onclick="submitReview()">Envoyer l'évaluation</button>`:`<button class="btn" disabled>Choisissez une note</button>`}
+      <button class="btn cancel" style="margin-top:9px;" onclick="resetAll()">Passer</button>
     </div>`;
   }
 }
+// ---- Safety + tourist phrasebook panel ----
+const PHRASES={
+  basics:[
+    {fr:"Bonjour / Salut",da:"Salam"},
+    {fr:"Merci beaucoup",da:"Choukran bezzaf"},
+    {fr:"Oui / Non",da:"Iyeh / La"},
+    {fr:"S'il vous plaît",da:"3afak"},
+    {fr:"Combien ça coûte ?",da:"Bch7al hada?"},
+  ],
+  ride:[
+    {fr:"Allumez le compteur, s'il vous plaît",da:"Khdem l'compteur 3afak"},
+    {fr:"Arrêtez ici, s'il vous plaît",da:"W9af hna 3afak"},
+    {fr:"Allez tout droit",da:"Sir nichan"},
+    {fr:"Tournez à droite / gauche",da:"Dour 3la limen / liser"},
+    {fr:"Je suis pressé(e)",da:"Ana zerban"},
+    {fr:"Mettez la climatisation",da:"Khdem klim 3afak"},
+  ],
+  help:[
+    {fr:"Aidez-moi, s'il vous plaît",da:"3awnni 3afak"},
+    {fr:"Je suis perdu(e)",da:"Ana tle3t / dert"},
+    {fr:"Appelez la police",da:"3ayet l'boliss"},
+    {fr:"Où sont les toilettes ?",da:"Fin kayna twalet?"},
+  ]
+};
+let panelTab='ride';
+function openPanel(kind){
+  state.panelKind=kind;
+  if(kind==='phrase')panelTab='ride';
+  renderPanel();
+  document.getElementById('scrim').classList.add('show');
+  document.getElementById('panel').classList.add('show');
+}
+function closePanel(){
+  document.getElementById('scrim').classList.remove('show');
+  document.getElementById('panel').classList.remove('show');
+}
+window.openPanel=openPanel;window.closePanel=closePanel;
+window.setPanelTab=t=>{panelTab=t;renderPanel();};
+window.callPolice=()=>{ window.location.href='tel:19'; }; // Morocco police = 19
+window.sayPhrase=(da)=>{
+  // audio placeholder: uses browser speech if available; real Darija audio added later
+  try{const u=new SpeechSynthesisUtterance(da);u.rate=.85;speechSynthesis.speak(u);}catch(e){}
+  toast('🔊 '+da);
+};
+
+function renderPanel(){
+  const b=document.getElementById('panelBody');
+  if(state.panelKind==='safety'){
+    b.innerHTML=`<h2>Sécurité</h2>
+      <div class="sub">Votre sécurité d'abord. En cas d'urgence, appelez les secours.</div>
+      <button class="sos-btn" onclick="callPolice()">🚨 Appeler la police (19)</button>
+      <div class="safe-tip"><span class="si">📍</span><div><b>Partagez votre trajet</b><div class="sub" style="margin-top:2px;">Le suivi GPS de votre course est actif et vérifié.</div></div></div>
+      <div class="safe-tip"><span class="si">🪪</span><div><b>Vérifiez le taxi</b><div class="sub" style="margin-top:2px;">Confirmez la plaque et le numéro de badge du chauffeur avant de monter.</div></div></div>
+      <div class="safe-tip"><span class="si">🧭</span><div><b>Alerte d'itinéraire</b><div class="sub" style="margin-top:2px;">Vous serez prévenu si le taxi s'écarte fortement de la route optimale.</div></div></div>`;
+  }else{
+    const list=PHRASES[panelTab]||[];
+    b.innerHTML=`<h2>Phrases utiles</h2>
+      <div class="sub">Touchez 🔊 pour écouter (audio darija bientôt disponible).</div>
+      <div class="seg-tabs">
+        <button class="${panelTab==='basics'?'on':''}" onclick="setPanelTab('basics')">Bases</button>
+        <button class="${panelTab==='ride'?'on':''}" onclick="setPanelTab('ride')">En taxi</button>
+        <button class="${panelTab==='help'?'on':''}" onclick="setPanelTab('help')">Aide</button>
+      </div>
+      ${list.map(p=>`<div class="phrase-card">
+        <div><div class="fr">${p.fr}</div><div class="da">${p.da}</div></div>
+        <button class="play" onclick="sayPhrase('${p.da.replace(/'/g,"\\'")}')">🔊</button>
+      </div>`).join('')}`;
+  }
+}
+
+// ---- Rider GPS: show the rider's real position ----
+let myPosMk=null;
+function startRiderGPS(){
+  if(!navigator.geolocation)return;
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const p=[pos.coords.latitude,pos.coords.longitude];
+    map.setView(p,15);
+    if(myPosMk)map.removeLayer(myPosMk);
+    myPosMk=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="me-mk"></div>',iconSize:[20,20],iconAnchor:[10,10]}),zIndexOffset:500}).addTo(map);
+  },()=>{ /* denied: keep default city view */ },{enableHighAccuracy:true});
+}
+
+// ---- Roaming taxis: show nearby online drivers, tappable ----
+let roamMarkers={};
+async function loadRoamingTaxis(){
+  const {data}=await sb.from('drivers').select('*').eq('online',true);
+  const seen=new Set();
+  (data||[]).forEach(d=>{
+    if(d.lat==null||d.lng==null)return;
+    seen.add(d.id);
+    const seats=d.seats_taken||0;
+    const full=seats>=3;
+    const popup=`<div class="taxi-pop">
+      <div class="tt">🚕 ${d.name}</div>
+      <div class="meta">${d.taxi_type==='grand'?'Grand Taxi':'Petit Taxi'} · ${d.plate||''}</div>
+      <div class="meta">⭐ ${Number(d.rating||5).toFixed(1)} · ${full?'Complet':(3-seats)+' place'+((3-seats)>1?'s':'')+' libre'+((3-seats)>1?'s':'')}</div>
+      <div class="seats-mini">${[0,1,2].map(i=>`<span class="sm ${i<seats?'full':''}"></span>`).join('')}</div>
+      <button ${full?'disabled':''} onclick="requestSpecificTaxi('${d.id}')">${full?'Taxi complet':'Demander ce taxi'}</button>
+    </div>`;
+    if(roamMarkers[d.id]){
+      roamMarkers[d.id].setLatLng([d.lat,d.lng]).setPopupContent(popup);
+    }else{
+      const m=L.marker([d.lat,d.lng],{icon:L.divIcon({className:'',html:'<div class="roam-mk">🚕</div>',iconSize:[30,30],iconAnchor:[15,15]})}).addTo(map);
+      m.bindPopup(popup);
+      roamMarkers[d.id]=m;
+    }
+  });
+  // remove taxis that went offline
+  Object.keys(roamMarkers).forEach(id=>{if(!seen.has(id)){map.removeLayer(roamMarkers[id]);delete roamMarkers[id];}});
+}
+window.requestSpecificTaxi=(driverId)=>{
+  if(!state.pickup||!state.drop){toast('Définissez d\'abord votre trajet');closePanel();return;}
+  state.preferredDriver=driverId;
+  toast('Demande envoyée à ce taxi');
+  requestRide();
+};
+// refresh roaming taxis live + every 5s
+sb.channel('roam').on('postgres_changes',{event:'*',schema:'public',table:'drivers'},loadRoamingTaxis).subscribe();
+setInterval(loadRoamingTaxis,5000);
+
 renderSheet();
+startRiderGPS();
+loadRoamingTaxis();
 setTimeout(()=>map.invalidateSize(),120);
 window.addEventListener('resize',()=>map.invalidateSize());
 </script>
