@@ -483,8 +483,8 @@ async function acceptRide(){
         if(destMarker)map.removeLayer(destMarker);if(routeLine)map.removeLayer(routeLine);
         finishTrip();
       },(t)=>{
-        // IV.3 Smart pooling: only offer a detour that satisfies the time rules
-        if(!state.detourOffered&&!state.detour&&state.seats<3&&t>0.4&&t<0.7){
+        // IV.3 Smart pooling: only for SMART rides, and only if it satisfies the time rules
+        if(r.type==='smart'&&!state.detourOffered&&!state.detour&&state.seats<3&&t>0.4&&t<0.7){
           state.detourOffered=true;
           qualifyDetour(r).then(c=>{ if(c) offerPop('detour',c); });
         }
