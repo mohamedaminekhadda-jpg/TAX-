@@ -104,6 +104,15 @@
   #meter .m-eta{font-size:13px;color:var(--txt2);font-weight:500;}#meter .m-eta b{color:var(--go-soft);font-weight:700;}
   #meter.landing{border-color:rgba(62,123,255,.4);}
   #meter.landing .m-fare{color:#8fb0ff;}
+  #meter.pooling{border-color:rgba(52,209,122,.4);}
+  .pool-scan{margin-top:12px;padding-top:12px;border-top:1px solid var(--stroke);}
+  .pool-scan .ph{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--go-soft);margin-bottom:8px;display:flex;align-items:center;gap:7px;}
+  .pool-chip{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;margin-top:7px;background:rgba(52,209,122,.08);
+    border:1px solid rgba(52,209,122,.28);border-radius:var(--r-sm);cursor:pointer;transition:transform .15s var(--ease);}
+  .pool-chip:active{transform:scale(.98);}
+  .pool-chip .pn{font-weight:700;font-size:14px;}
+  .pool-chip .pm{font-size:11px;color:var(--txt3);margin-top:1px;}
+  .pool-chip .pf{font-family:'Sora';font-weight:800;color:var(--go-soft);font-size:15px;}
 
   /* ---- Bottom sheet ---- */
   #sheet{position:absolute;left:0;right:0;bottom:0;z-index:600;padding:40px 14px 18px;max-height:62%;overflow-y:auto;
@@ -232,6 +241,7 @@
     <div class="toggles">
       <div class="seg">
         <button class="chip auto" id="autoBtn">✦ Auto-pilote</button>
+        <button class="chip" id="ghostBtn">👥 Démo</button>
         <span class="chip" style="cursor:default;"><b id="cnt" style="color:var(--amber)">0</b>&nbsp;à proximité</span>
       </div>
       <button class="duty" id="duty"><span class="dot"></span><span id="dutyTxt">En ligne</span></button>
@@ -349,8 +359,46 @@ const LANDING_POOL=[
 ];
 
 let state={riders:[...RIDERS],selected:null,active:null,phase:"idle",online:true,auto:false,
-  earnings:187,trips:9,driverPos:[...DRIVER_START],seats:1,
+  earnings:187,trips:9,driverPos:[...DRIVER_START],seats:1,showGhosts:true,
   detour:null,pooled:null,paused:false,pendingPop:null,popKind:null,detourOffered:false,landingFired:false};
+
+// ---- Ghost riders (demo bots) — fake ride requests so the map feels alive ----
+const GHOST_RIDER_NAMES=["Yasmine D.","Omar K.","Salma B.","Reda T.","Imane F.","Mehdi A.","Nadia L.","Karim O.","Sofia M.","Anas H."];
+function makeGhostRiders(center,count){
+  const out=[];
+  for(let i=0;i<count;i++){
+    const dLat=(Math.random()-0.5)*0.03, dLng=(Math.random()-0.5)*0.034;
+    const pickup=[center[0]+dLat, center[1]+dLng];
+    // destination somewhere else in the city
+    const dropoff=[center[0]+(Math.random()-0.5)*0.06, center[1]+(Math.random()-0.5)*0.06];
+    const pr=nearestRepere(pickup[0],pickup[1]);
+    const dr=nearestRepere(dropoff[0],dropoff[1]);
+    const km=map.distance(pickup,dropoff)/1000;
+    const types=['normal','normal','smart','premium'];
+    const type=types[Math.floor(Math.random()*types.length)];
+    out.push({
+      id:'g'+Date.now()+i,
+      ghost:true,
+      name:GHOST_RIDER_NAMES[Math.floor(Math.random()*GHOST_RIDER_NAMES.length)],
+      pickup, pickupName:pr.name, repere:pr.name, repereM:pr.meters,
+      dropoff, dropName:dr.name,
+      fare:Math.max(7,Math.round(7+km*DH*(type==='premium'?1.5:type==='smart'?0.9:1))),
+      pax:1+Math.floor(Math.random()*3),
+      rating:+(4.4+Math.random()*0.6).toFixed(1), trips:Math.floor(Math.random()*200),
+      type, onRoute:true
+    });
+  }
+  return out;
+}
+function refreshGhostRiders(){
+  if(state.showGhosts===false||state.active){return;}
+  const center=state.driverPos||DRIVER_START;
+  // keep only DB (string-id) riders, replace ghost ones
+  const dbRiders=state.riders.filter(r=>!r.ghost);
+  state.riders=[...dbRiders, ...makeGhostRiders(center, 4+Math.floor(Math.random()*3))];
+  renderMarkers();renderSheet();
+}
+
 
 // Map
 const map=L.map('map',{zoomControl:false,attributionControl:false}).setView(CENTER,14);
@@ -462,7 +510,7 @@ async function acceptRide(){
   const r=state.selected;
   state.active=r;state.selected=null;state.phase="toPickup";state.seats=1;
   state.riders=state.riders.filter(x=>x.id!==r.id);
-  state.detourOffered=false;state.landingFired=false;
+  state.detourOffered=false;state.landingFired=false;state.trafficChecked=false;
   renderMarkers();renderSheet();showMeter();
   document.getElementById('mFare').textContent='0 DH';
   toast("Course confirmée — en route vers le client");
@@ -477,26 +525,116 @@ async function acceptRide(){
     if(typeof r.id==='string'){ sb.from('rides').update({status:'onboard'}).eq('id',r.id).then(()=>{}); }
     state.phase="toDrop";renderSheet();
     destMarker=L.marker(r.dropoff,{icon:L.divIcon({className:'',html:'<div class="dest-mk">🏁</div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map);
+    // IV.3 Dynamic Routing: for SMART rides the route locks and the map filters
+    // to show only route-compatible requests, refreshed as we drive.
+    if(r.type==='smart' && state.seats<3){ startRouteLockScan(r); }
     getRoute(r.pickup,r.dropoff).then(r2=>{
       const legKm=r2.distance/1000;
       driveAlong(r2.coords,12000,()=>{
         if(destMarker)map.removeLayer(destMarker);if(routeLine)map.removeLayer(routeLine);
+        stopRouteLockScan();
         finishTrip();
       },(t)=>{
-        // IV.3 Smart pooling: only for SMART rides, and only if it satisfies the time rules
-        if(r.type==='smart'&&!state.detourOffered&&!state.detour&&state.seats<3&&t>0.4&&t<0.7){
-          state.detourOffered=true;
-          qualifyDetour(r).then(c=>{ if(c) offerPop('detour',c); });
+        // Traffic check ~30% into the drop-off leg (real trips)
+        if(!state.trafficChecked && t>0.3){
+          state.trafficChecked=true;
+          maybeTraffic(r);
         }
         // IV.4 Landing Radar at ~500m before drop-off (~last 15%)
         if(!state.landingFired&&t>0.85){
           state.landingFired=true;
+          stopRouteLockScan();
           document.getElementById('meter').classList.add('landing');
           offerPop('landing');
         }
       },0,legKm);
     });
   });
+}
+
+// ---- IV.3 Route-lock scan: continuously surface route-compatible riders ----
+let routeScanTimer=null;
+function startRouteLockScan(first){
+  state.routeLocked=true;
+  document.getElementById('meter').classList.add('pooling');
+  scanCompatible(first);
+  routeScanTimer=setInterval(()=>scanCompatible(first),4000);
+}
+function stopRouteLockScan(){
+  state.routeLocked=false;state.compatible=[];
+  if(routeScanTimer){clearInterval(routeScanTimer);routeScanTimer=null;}
+  document.getElementById('meter').classList.remove('pooling');
+  // clear highlight markers
+  (state.compatMarkers||[]).forEach(m=>map.removeLayer(m));state.compatMarkers=[];
+}
+async function scanCompatible(first){
+  if(state.seats>=3||state.paused){return;}
+  // pool of candidates = current waiting riders (DB + ghosts) along the route
+  const pool=[...state.riders, ...DETOUR_POOL.map(d=>({id:d.id,name:d.name,pickup:d.at,pickupName:d.atName,repere:d.atName,dropoff:d.dropoff,dropName:d.dropName,fare:d.fare,rating:d.rating,type:'smart',pax:1}))];
+  const now=state.driverPos, d1=first.dropoff;
+  const baseline=await routeTime(now,d1);
+  const compatible=[];
+  for(const c of pool){
+    if(c.id===first.id)continue;
+    const toPick=await routeTime(now,c.at||c.pickup);
+    const cdrop=c.dropoff;
+    const aTime=toPick+await routeTime(c.at||c.pickup,cdrop)+await routeTime(cdrop,d1);
+    const bTime=toPick+await routeTime(c.at||c.pickup,d1)+await routeTime(d1,cdrop);
+    const best2=Math.min(aTime,bTime);
+    const overhead=(best2-baseline)/baseline;
+    if(overhead<=0.30){ compatible.push({...c, _overhead:Math.round(overhead*100), _order:(aTime<=bTime?'before':'after')}); }
+    if(compatible.length>=4)break;
+  }
+  state.compatible=compatible.sort((a,b)=>a._overhead-b._overhead);
+  renderCompatible();
+  renderSheet();
+}
+function renderCompatible(){
+  (state.compatMarkers||[]).forEach(m=>map.removeLayer(m));state.compatMarkers=[];
+  (state.compatible||[]).forEach(c=>{
+    const at=c.at||c.pickup;
+    const m=L.marker(at,{icon:L.divIcon({className:'',iconSize:[34,34],iconAnchor:[17,34],
+      html:`<div class="rider-mk detour"><div class="arrow">➕</div><div class="body"><span>◆</span></div>
+        <div class="fare-tag" style="position:absolute;left:38px;top:6px;">+${c.fare} DH</div></div>`})}).addTo(map);
+    m.on('click',()=>addCompatible(c.id));
+    state.compatMarkers.push(m);
+  });
+}
+window.addCompatible=(id)=>{
+  const c=(state.compatible||[]).find(x=>x.id===id);if(!c)return;
+  state.pendingPop=c;state.popKind='detour';
+  takePop(); // reuse the divert-and-pool flow
+};
+
+
+// ---- Traffic + legal rerouting (driver side) ----
+async function maybeTraffic(r){
+  // ~50% of trips hit a traffic event in the demo
+  if(Math.random()>0.55) return;
+  const alt=await getRouteAltD(state.driverPos, r.dropoff);
+  if(!alt.alt) return;
+  const reasons=[["🚗 Trafic dense devant","embouteillage important"],
+                 ["🚧 Route bloquée","travaux sur l'itinéraire"],
+                 ["⛔ Accident signalé","accident plus loin"]];
+  const [title,why]=reasons[Math.floor(Math.random()*reasons.length)];
+  const congested=alt.duration*1.6;
+  const saveMin=Math.max(1,Math.round((congested-alt.alt.duration)/60));
+  toast(`${title} — itinéraire alternatif proposé (~${saveMin} min)`);
+  // write a reroute offer onto the ride so the rider can accept/deny.
+  // Legal note: the meter follows the ACTUAL route driven, keeping the fare honest.
+  if(typeof r.id==='string'){
+    sb.from('rides').update({reroute_reason:why, reroute_save_min:saveMin}).eq('id',r.id).then(()=>{});
+  }
+}
+async function getRouteAltD(a,b){
+  try{
+    const u=`https://router.project-osrm.org/route/v1/driving/${a[1]},${a[0]};${b[1]},${b[0]}?overview=full&geometries=geojson&alternatives=true`;
+    const r=await(await fetch(u)).json();
+    if(r.routes&&r.routes[0]){const m=r.routes[0],alt=r.routes[1]||null;
+      return {coords:m.geometry.coordinates.map(c=>[c[1],c[0]]),duration:m.duration,distance:m.distance,
+        alt:alt?{coords:alt.geometry.coordinates.map(c=>[c[1],c[0]]),duration:alt.duration,distance:alt.distance}:null};}
+  }catch(e){}
+  return {coords:[a,b],duration:600,distance:5000,alt:null};
 }
 
 // ---- Detour qualification (change 4) ----
@@ -589,21 +727,24 @@ function takePop(){
     // DIVERT NOW: stop current drop-off, go pick up the on-route passenger,
     // then drive both to the (shared) destination.
     if(animFrame)cancelAnimationFrame(animFrame);
+    if(typeof stopRouteLockScan==='function') stopRouteLockScan();
     const first=state.active;            // passenger already on board
+    const candAt=cand.at||cand.pickup;   // works for both pool + DB/ghost riders
     state.seats=Math.min(3,state.seats+1);
     state.pooled=cand;                   // remember 2nd passenger
     state.paused=false;
+    // remove this rider from the waiting list if it was a real/ghost request
+    state.riders=state.riders.filter(x=>x.id!==cand.id);
     toast(`Détour — récupération de ${cand.name} (siège ${state.seats}/3)`);
 
     if(popMarker)map.removeLayer(popMarker);
     if(destMarker)map.removeLayer(destMarker);
     state.phase="toPickup";renderSheet();
     // marker at the new passenger's pickup
-    destMarker=L.marker(cand.at,{icon:L.divIcon({className:'',html:'<div class="detour-mk"><span>👤</span></div>',iconSize:[30,30],iconAnchor:[15,30]})}).addTo(map);
-    getRoute(state.driverPos,cand.at).then(rt=>{
+    destMarker=L.marker(candAt,{icon:L.divIcon({className:'',html:'<div class="detour-mk"><span>👤</span></div>',iconSize:[30,30],iconAnchor:[15,30]})}).addTo(map);
+    getRoute(state.driverPos,candAt).then(rt=>{
       driveAlong(rt.coords,5500,()=>{
         if(destMarker)map.removeLayer(destMarker);
-        state.seats=state.seats;        // both aboard now
         toast(`${cand.name} à bord — direction ${cand.dropName}`);
         state.phase="toDrop";renderSheet();
         // shared destination: drive to the nearer drop, then the other if needed.
@@ -720,6 +861,15 @@ document.getElementById('autoBtn').onclick=()=>{
   toast(state.auto?'Auto-Pilot activé — scan automatique':'Auto-Pilot désactivé');
   if(state.auto)autoPick();
 };
+// demo ghost riders toggle
+const ghostBtn=document.getElementById('ghostBtn');
+ghostBtn.classList.toggle('on',state.showGhosts!==false);
+ghostBtn.onclick=()=>{
+  state.showGhosts = state.showGhosts===false ? true : false;
+  ghostBtn.classList.toggle('on',state.showGhosts);
+  if(state.showGhosts){ refreshGhostRiders(); toast('Demandes démo affichées'); }
+  else { state.riders=state.riders.filter(r=>!r.ghost); renderMarkers(); renderSheet(); toast('Demandes démo masquées'); }
+};
 
 // ---- sheet ----
 function seatHtml(n){let h='<div class="seats">';for(let i=0;i<3;i++)h+=`<div class="seat ${i<n?'full':''}"></div>`;h+='</div>';return h;}
@@ -743,7 +893,15 @@ function renderSheet(){
         <div class="leg p"><div class="dotline"><span class="dotmark"></span><span class="lbl">Départ</span></div><div style="font-size:12.5px;font-weight:500;">${r.pickupName}</div></div>
         <div class="leg d"><div class="dotline"><span class="dotmark"></span><span class="lbl">Arrivée</span></div><div style="font-size:12.5px;font-weight:500;">${r.dropName}</div></div>
       </div>
-      <div style="text-align:center;color:var(--txt3);font-size:12px;">Trajet en cours · compteur actif</div>
+      ${state.routeLocked?`<div class="pool-scan">
+        <div class="ph">🔒 Itinéraire verrouillé · ${(state.compatible||[]).length} compatible${(state.compatible||[]).length!==1?'s':''}</div>
+        ${(state.compatible||[]).length===0?`<div class="sub">Recherche de passagers sur votre route…</div>`:
+          (state.compatible||[]).map(c=>`<div class="pool-chip" onclick="addCompatible('${c.id}')">
+            <div><div class="pn">${c.name}</div><div class="pm">↑ ${c.repere||c.pickupName} · ${c._order==='before'?'sur la route':'après'} · +${c._overhead}%</div></div>
+            <div class="pf">+${c.fare}</div>
+          </div>`).join('')}
+      </div>`:''}
+      <div style="text-align:center;color:var(--txt3);font-size:12px;margin-top:10px;">Trajet en cours · compteur actif</div>
     </div>`;return;
   }
   if(state.selected){
@@ -816,8 +974,11 @@ async function loadRides(){
     .select('*')
     .eq('status','waiting')          // only show rides nobody has accepted yet
     .order('created_at',{ascending:false});
-  if(error){ console.error(error); toast('Connexion DB échouée'); return; }
-  state.riders = (data||[]).map(dbRowToRider);
+  if(error){ console.error(error); }
+  const dbRiders=(data||[]).map(dbRowToRider);
+  // keep existing ghosts so they don't vanish on every DB refresh
+  const existingGhosts=state.riders.filter(r=>r.ghost);
+  state.riders=[...dbRiders, ...existingGhosts];
   renderMarkers(); renderSheet();
 }
 
@@ -831,6 +992,8 @@ sb.channel('rides-live')
 renderMarkers();renderSheet();
 initDriver();
 loadRides();                          // pull real data on startup
+refreshGhostRiders();                 // seed demo ride requests
+setInterval(()=>{ if(!state.active && state.showGhosts!==false) refreshGhostRiders(); }, 18000);
 setTimeout(()=>map.invalidateSize(),120);
 window.addEventListener('resize',()=>map.invalidateSize());
 // let the logo "charge" (~2s) then reveal the app
