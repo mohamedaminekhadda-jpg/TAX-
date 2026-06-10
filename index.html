@@ -170,19 +170,19 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+// ---- Supabase connection (your live database) ----
+const SUPABASE_URL = 'https://gazieocibfftbstxefyj.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdhemllb2NpYmZmdGJzdHhlZnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNDAyMDgsImV4cCI6MjA5NjYxNjIwOH0.IrUwdcdCYvKeCoSctJuSPUl1sfZ1U70TRMfkXjW1BAI';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
 // Casablanca center
 const CENTER=[33.5899,-7.6039];
 const DRIVER_START=[33.5899,-7.6039];
 const DH=10.4; // pseudo dirham-per-km factor for meter
 
-const RIDERS=[
-  {id:1,name:"Salma E.",  pickup:[33.5950,-7.6180],pickupName:"Boulevard Mohammed V",dropoff:[33.5731,-7.5898],dropName:"Casa Port Station", fare:32,rating:4.9,trips:142,type:"normal",onRoute:true},
-  {id:2,name:"Karim A.",  pickup:[33.5820,-7.6210],pickupName:"Place des Nations Unies",dropoff:[33.6050,-7.6320],dropName:"Maârif",         fare:24,rating:4.7,trips:58, type:"smart", onRoute:false},
-  {id:3,name:"Nadia F.",  pickup:[33.5870,-7.5990],pickupName:"Marché Central",     dropoff:[33.5530,-7.6560],dropName:"Aïn Diab Corniche",fare:46,rating:5.0,trips:301,type:"premium",onRoute:false},
-  {id:4,name:"Hamza T.",  pickup:[33.5930,-7.6080],pickupName:"Parc de la Ligue Arabe",dropoff:[33.5990,-7.6300],dropName:"Gauthier",       fare:18,rating:4.8,trips:87, type:"normal",onRoute:true},
-  {id:5,name:"Imane R.",  pickup:[33.5790,-7.6120],pickupName:"Habous Quarter",     dropoff:[33.5700,-7.5880],dropName:"Casa Port",       fare:28,rating:4.6,trips:219,type:"smart", onRoute:true},
-];
+const RIDERS=[]; // live ride requests now load from the Supabase database
 // route-compatible passengers offered mid-trip (destinations near Casa Port cluster)
 const DETOUR_POOL=[
   {id:101,name:"Othmane L.",at:[33.5810,-7.5930],atName:"Rue Allal Ben Abdellah",dropoff:[33.5735,-7.5905],dropName:"Casa Port (près)",fare:16,rating:4.8,type:"smart"},
@@ -304,6 +304,8 @@ async function acceptRide(){
   renderMarkers();renderSheet();showMeter();
   document.getElementById('mFare').textContent='0 DH';
   toast("Course confirmée — en route vers le client");
+  // claim this ride in the database so other drivers stop seeing it
+  if(typeof r.id==='string'){ sb.from('rides').update({status:'accepted'}).eq('id',r.id).then(()=>{}); }
   if(destMarker)map.removeLayer(destMarker);
   destMarker=L.marker(r.pickup,{icon:L.divIcon({className:'',html:'<div class="dest-mk">👤</div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map);
   const route=await getRoute(state.driverPos,r.pickup);
@@ -496,7 +498,9 @@ function finishTrip(){
     return;
   }
   toast(`+${r.fare} DH — Course terminée ✓`);
+  if(typeof r.id==='string'){ sb.from('rides').update({status:'completed'}).eq('id',r.id).then(()=>{}); }
   hideMeter();state.active=null;state.phase="idle";renderMarkers();renderSheet();
+  loadRides();
   if(state.auto)setTimeout(autoPick,1200);
 }
 
@@ -586,7 +590,44 @@ function renderSheet(){
       </div></div>`).join('');
 }
 
+// ---- LIVE DATA: load ride requests from your Supabase database ----
+function dbRowToRider(row){
+  // turn a database row into the shape the app's UI expects
+  return {
+    id: row.id,
+    name: row.rider_name,
+    pickup: [row.pickup_lat, row.pickup_lng],
+    pickupName: row.pickup_name || 'Pickup',
+    dropoff: [row.drop_lat, row.drop_lng],
+    dropName: row.drop_name || 'Destination',
+    fare: Number(row.fare) || 0,
+    rating: 4.8,
+    trips: 0,
+    type: row.ride_type || 'normal',
+    onRoute: true
+  };
+}
+
+async function loadRides(){
+  const { data, error } = await sb
+    .from('rides')
+    .select('*')
+    .eq('status','waiting')          // only show rides nobody has accepted yet
+    .order('created_at',{ascending:false});
+  if(error){ console.error(error); toast('Connexion DB échouée'); return; }
+  state.riders = (data||[]).map(dbRowToRider);
+  renderMarkers(); renderSheet();
+}
+
+// listen for new/changed rides and refresh instantly
+sb.channel('rides-live')
+  .on('postgres_changes',{event:'*',schema:'public',table:'rides'}, ()=>{
+    if(!state.active) loadRides();   // don't disrupt an in-progress trip
+  })
+  .subscribe();
+
 renderMarkers();renderSheet();
+loadRides();                          // pull real data on startup
 setTimeout(()=>map.invalidateSize(),120);
 window.addEventListener('resize',()=>map.invalidateSize());
 </script>
