@@ -280,6 +280,9 @@ async function doLogin(){
   ME = data;
   localStorage.setItem('tax_driver_code', code);   // stay logged in on this phone
   document.getElementById('login').classList.add('hidden');
+  // appear to riders immediately (GPS may refine this shortly)
+  const p=state.driverPos||DRIVER_START;
+  await sb.from('drivers').update({online:true,lat:p[0],lng:p[1],seats_taken:0,last_seen:new Date().toISOString()}).eq('id',ME.id);
   startLocationBroadcast();
 }
 window.doLogin = doLogin;
@@ -298,7 +301,7 @@ function startLocationBroadcast(){
     const lat=pos.coords.latitude, lng=pos.coords.longitude;
     state.driverPos=[lat,lng];
     if(ME){
-      await sb.from('drivers').update({lat,lng,last_seen:new Date().toISOString()}).eq('id',ME.id);
+      await sb.from('drivers').update({lat,lng,last_seen:new Date().toISOString(),seats_taken:state.active?state.seats:0,online:state.online}).eq('id',ME.id);
       // if on an active ride, also push position onto that ride so the rider sees us move
       if(state.active && typeof state.active.id==='string'){
         await sb.from('rides').update({driver_lat:lat,driver_lng:lng}).eq('id',state.active.id);
@@ -314,6 +317,24 @@ const DRIVER_START=[33.5899,-7.6039];
 const DH=10.4; // pseudo dirham-per-km factor for meter
 
 const RIDERS=[]; // live ride requests now load from the Supabase database
+
+// ---- Built-in Casablanca landmarks (repères) ----
+const LANDMARKS=[
+  {n:"Place Mohammed V",lat:33.5928,lng:-7.6192},{n:"Marché Central",lat:33.5969,lng:-7.6175},
+  {n:"Bd Mohammed V",lat:33.5940,lng:-7.6150},{n:"Gare Casa-Port",lat:33.5993,lng:-7.6087},
+  {n:"Gare Casa-Voyageurs",lat:33.5870,lng:-7.5560},{n:"Place des Nations Unies",lat:33.5950,lng:-7.6180},
+  {n:"Mosquée Hassan II",lat:33.6083,lng:-7.6325},{n:"Quartier Habous",lat:33.5790,lng:-7.6120},
+  {n:"Parc de la Ligue Arabe",lat:33.5910,lng:-7.6080},{n:"Maârif",lat:33.5860,lng:-7.6320},
+  {n:"Gauthier",lat:33.5950,lng:-7.6250},{n:"Corniche Aïn Diab",lat:33.5970,lng:-7.6760},
+  {n:"Morocco Mall",lat:33.5760,lng:-7.7050},{n:"Twin Center",lat:33.5870,lng:-7.6310},
+  {n:"Anfa",lat:33.5870,lng:-7.6520},{n:"Derb Ghallef",lat:33.5790,lng:-7.6230},
+  {n:"Sidi Belyout",lat:33.6010,lng:-7.6160},{n:"Aéroport Mohammed V",lat:33.3675,lng:-7.5898}
+];
+function nearestRepere(lat,lng){
+  let best=null,bd=1e9;
+  for(const L of LANDMARKS){const d=Math.hypot(L.lat-lat,L.lng-lng);if(d<bd){bd=d;best=L;}}
+  return {name:best.n, meters:Math.round(bd*111000)};
+}
 // route-compatible passengers offered mid-trip (destinations near Casa Port cluster)
 const DETOUR_POOL=[
   {id:101,name:"Othmane L.",at:[33.5810,-7.5930],atName:"Rue Allal Ben Abdellah",dropoff:[33.5735,-7.5905],dropName:"Casa Port (près)",fare:16,rating:4.8,type:"smart"},
@@ -460,9 +481,10 @@ async function acceptRide(){
         if(destMarker)map.removeLayer(destMarker);if(routeLine)map.removeLayer(routeLine);
         finishTrip();
       },(t)=>{
-        // IV.3 Smart pooling detour offer ~40%
+        // IV.3 Smart pooling: only offer a detour that satisfies the time rules
         if(!state.detourOffered&&!state.detour&&state.seats<3&&t>0.4&&t<0.7){
-          state.detourOffered=true;offerPop('detour');
+          state.detourOffered=true;
+          qualifyDetour(r).then(c=>{ if(c) offerPop('detour',c); });
         }
         // IV.4 Landing Radar at ~500m before drop-off (~last 15%)
         if(!state.landingFired&&t>0.85){
@@ -475,13 +497,45 @@ async function acceptRide(){
   });
 }
 
+// ---- Detour qualification (change 4) ----
+// Rules, measured in TRAVEL TIME via OSRM:
+//  Baseline = current position -> first ride's drop-off.
+//  A candidate qualifies if total route [now -> candidate pickup -> ... -> both drops]
+//  adds <= 30% over baseline, AND the candidate's drop-off is either:
+//    (a) "along the way" — inserting it before the first drop costs <=10% extra time, OR
+//    (b) "beyond" — it's naturally reached after the first drop (continue past it).
+async function routeTime(a,b){ const r=await getRoute(a,b); return r.duration||(r.distance/8); }
+async function qualifyDetour(first){
+  const now=state.driverPos, d1=first.dropoff;
+  const baseline=await routeTime(now,d1);
+  let best=null,bestScore=1e9;
+  for(const c of DETOUR_POOL){
+    // leg to candidate pickup, then evaluate both orderings of the two drop-offs
+    const toPick=await routeTime(now,c.at);
+    // option A: pick -> candidate drop -> first drop  (candidate along the way / before)
+    const aTime=toPick+await routeTime(c.at,c.dropoff)+await routeTime(c.dropoff,d1);
+    // option B: pick -> first drop -> candidate drop  (candidate beyond / after)
+    const bTime=toPick+await routeTime(c.at,d1)+await routeTime(d1,c.dropoff);
+    const best2=Math.min(aTime,bTime);
+    const overhead=(best2-baseline)/baseline;          // total time overhead
+    // "along the way" test: candidate drop inserted before first drop, extra vs baseline
+    const insertExtra=(await routeTime(c.at,c.dropoff)+await routeTime(c.dropoff,d1)
+                       - await routeTime(c.at,d1))/baseline;
+    const alongWay = insertExtra<=0.10;
+    const beyond   = bTime<=aTime;                      // reached after first drop
+    if(overhead<=0.30 && (alongWay||beyond) && overhead<bestScore){
+      bestScore=overhead; best={...c, _order:(aTime<=bTime?'before':'after'), _overhead:Math.round(overhead*100)};
+    }
+  }
+  return best;
+}
+
 // ---- popups (detour + landing share UI) ----
 let popTimer=null;
-function offerPop(kind){
+function offerPop(kind,preChosen){
   let cand;
   if(kind==='detour'){
-    // choose the candidate whose destination is closest to the current passenger's
-    cand=[...DETOUR_POOL].sort((a,b)=>
+    cand = preChosen || [...DETOUR_POOL].sort((a,b)=>
       map.distance(a.dropoff,state.active.dropoff)-map.distance(b.dropoff,state.active.dropoff))[0];
   }else{
     cand=LANDING_POOL[Math.floor(Math.random()*LANDING_POOL.length)];
@@ -496,8 +550,8 @@ function offerPop(kind){
   document.getElementById('popHead').textContent=kind==='detour'?'Passager sur votre route':'Client près de votre arrivée';
   const shareKm=kind==='detour'?(map.distance(cand.dropoff,state.active.dropoff)/1000).toFixed(1):null;
   const note=kind==='detour'
-    ?`→ ${cand.dropName} · drop-off only ${shareKm} km from current · shared ride`
-    :`Waiting ${cand.atName} · ready when you drop off`;
+    ?`→ ${cand.dropName} · ${cand._order==='before'?'sur votre route':'après votre arrivée'}${cand._overhead!=null?` · +${cand._overhead}% temps`:''}`
+    :`En attente ${cand.atName} · prêt à votre dépose`;
   document.getElementById('popBody').innerHTML=`
     <div>
       <div style="font-size:18px;font-weight:700;color:var(--txt);">${cand.name}</div>
@@ -645,7 +699,9 @@ function finishTrip(){
 }
 
 function declineRide(){clearPreview();state.selected=null;renderMarkers();renderSheet();}
-function toggleDuty(){if(state.active)return;state.online=!state.online;const d=document.getElementById('duty');d.classList.toggle('off',!state.online);document.getElementById('dutyTxt').textContent=state.online?'En ligne':'Hors ligne';state.selected=null;renderMarkers();renderSheet();}
+function toggleDuty(){if(state.active)return;state.online=!state.online;const d=document.getElementById('duty');d.classList.toggle('off',!state.online);document.getElementById('dutyTxt').textContent=state.online?'En ligne':'Hors ligne';
+  if(ME){const p=state.driverPos||DRIVER_START;sb.from('drivers').update({online:state.online,lat:p[0],lng:p[1],seats_taken:0,last_seen:new Date().toISOString()}).eq('id',ME.id).then(()=>{});}
+  state.selected=null;renderMarkers();renderSheet();}
 document.getElementById('duty').onclick=toggleDuty;
 
 // Auto-pilot (IV.2)
@@ -694,7 +750,7 @@ function renderSheet(){
       <div class="row" style="margin-bottom:10px;">
         <div><div class="lbl">Demande de course</div>
           <div style="font-size:22px;font-weight:700;margin-top:4px;letter-spacing:-0.01em;">${r.name}</div>
-          <div style="margin-top:4px;"><span class="stars">${stars(r.rating)}</span><span class="sub"> ${r.rating} · ${r.trips} courses</span></div>
+          <div style="margin-top:4px;"><span class="stars">${stars(r.rating)}</span><span class="sub"> ${r.rating} · ${r.pax} passager${r.pax>1?'s':''}</span></div>
         </div>
         <div style="text-align:right;"><div class="bigfare">${r.fare} DH</div>
           <span class="compass ${r.onRoute?'fwd':'det'}" style="margin-top:6px;display:inline-block;">${r.onRoute?'➡️ Sur trajet':'↩️ Détour'}</span>
@@ -706,7 +762,7 @@ function renderSheet(){
         <div class="tpill premium ${r.type==='premium'?'on':''}">Premium</div>
       </div>
       <div class="legs">
-        <div class="leg p"><div class="dotline"><span class="dotmark"></span><span class="lbl">Départ</span></div><div style="font-size:13px;font-weight:600;">${r.pickupName}</div></div>
+        <div class="leg p"><div class="dotline"><span class="dotmark"></span><span class="lbl">Départ</span></div><div style="font-size:13px;font-weight:600;">${r.pickupName}</div><div class="sub" style="margin-top:3px;">📍 ${r.repere}${r.repereM<900?` · ${r.repereM} m`:''}</div></div>
         <div class="leg d"><div class="dotline"><span class="dotmark"></span><span class="lbl">Arrivée</span></div><div style="font-size:13px;font-weight:600;">${r.dropName}</div></div>
       </div>
       <div style="display:flex;gap:9px;">
@@ -721,8 +777,8 @@ function renderSheet(){
       <div>
         <div style="font-weight:700;font-size:16px;display:flex;align-items:center;gap:7px;letter-spacing:-0.01em;">${r.name}
           <span class="compass ${r.onRoute?'fwd':'det'}">${r.onRoute?'➡️':'↩️'}</span></div>
-        <div class="sub" style="margin-top:3px;">↑ ${r.pickupName}</div>
-        <div style="font-size:11px;color:var(--txt3);margin-top:1px;">→ ${r.dropName}</div>
+        <div class="sub" style="margin-top:3px;">📍 ${r.repere}</div>
+        <div style="font-size:11px;color:var(--txt3);margin-top:1px;">→ ${r.dropName} · ${r.pax}👤</div>
       </div>
       <div style="text-align:right;min-width:62px;">
         <div style="font-family:'Sora';font-size:18px;font-weight:800;color:var(--amber);letter-spacing:-0.02em;">${r.fare} DH</div>
@@ -733,14 +789,18 @@ function renderSheet(){
 // ---- LIVE DATA: load ride requests from your Supabase database ----
 function dbRowToRider(row){
   // turn a database row into the shape the app's UI expects
+  const pr=nearestRepere(row.pickup_lat,row.pickup_lng);
   return {
     id: row.id,
     name: row.rider_name,
     pickup: [row.pickup_lat, row.pickup_lng],
     pickupName: row.pickup_name || 'Pickup',
+    repere: pr.name,
+    repereM: pr.meters,
     dropoff: [row.drop_lat, row.drop_lng],
     dropName: row.drop_name || 'Destination',
     fare: Number(row.fare) || 0,
+    pax: row.pax || 1,
     rating: 4.8,
     trips: 0,
     type: row.ride_type || 'normal',
