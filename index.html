@@ -70,16 +70,25 @@
   .leaflet-control-zoom a{background:var(--glass)!important;backdrop-filter:blur(16px);color:var(--txt)!important;border-color:var(--stroke)!important;}
 
   /* ---- Markers ---- */
-  .taxi-mk{width:38px;height:38px;display:flex;align-items:center;justify-content:center;
-    background:linear-gradient(135deg,var(--amber-soft),var(--amber));border:2.5px solid rgba(255,255,255,.9);border-radius:11px;
-    box-shadow:0 6px 18px var(--amber-glow),inset 0 1px 2px rgba(255,255,255,.4);font-size:18px;transition:transform .12s linear;}
-  .rider-mk{position:relative;width:36px;height:36px;}
-  .rider-mk .body{width:36px;height:36px;display:flex;align-items:center;justify-content:center;background:var(--glass-hi);backdrop-filter:blur(8px);
-    border:2px solid var(--amber);border-radius:50% 50% 50% 2px;transform:rotate(-45deg);box-shadow:0 4px 14px rgba(0,0,0,.5),0 0 14px var(--amber-glow);}
-  .rider-mk .body span{transform:rotate(45deg);font-size:14px;}
-  .rider-mk.sel .body{background:linear-gradient(135deg,var(--amber-soft),var(--amber));border-color:#fff;}
-  .rider-mk .arrow{position:absolute;top:-9px;left:50%;transform:translateX(-50%);font-size:12px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));}
-  .rider-mk.detour .body{border-color:var(--blue);box-shadow:0 4px 14px rgba(0,0,0,.5),0 0 14px rgba(62,123,255,.5);}
+  /* Taxi marker: no box, just the emoji with a soft glow + gentle bob */
+  .taxi-mk{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:30px;
+    background:none;border:none;box-shadow:none;
+    filter:drop-shadow(0 3px 5px rgba(0,0,0,.55)) drop-shadow(0 0 10px var(--amber-glow));
+    transition:transform .12s linear;animation:taxiBob 2.4s var(--ease-soft) infinite;transform-origin:center;}
+  @keyframes taxiBob{0%,100%{translate:0 0;}50%{translate:0 -2px;}}
+  .taxi-mk::after{content:"";position:absolute;width:34px;height:10px;left:3px;bottom:-3px;border-radius:50%;
+    background:radial-gradient(ellipse,rgba(0,0,0,.4),transparent 70%);z-index:-1;animation:taxiShadow 2.4s var(--ease-soft) infinite;}
+  @keyframes taxiShadow{0%,100%{transform:scaleX(1);opacity:.5;}50%{transform:scaleX(.85);opacity:.32;}}
+
+  /* Rider navigation puck: small blue dot + separate triangle arrow */
+  .puck{position:relative;width:44px;height:44px;}
+  .puck-arrow{position:absolute;inset:0;transform-origin:center;pointer-events:none;}
+  .puck-arrow svg{position:absolute;inset:0;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));}
+  .puck-dot{position:absolute;top:50%;left:50%;width:13px;height:13px;margin:-6.5px 0 0 -6.5px;border-radius:50%;
+    background:linear-gradient(135deg,#5b91ff,var(--blue));border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.5);z-index:2;}
+  .puck.detour .puck-dot{background:linear-gradient(135deg,#8fb0ff,#5b91ff);}
+  .puck.sel .puck-dot{background:linear-gradient(135deg,var(--amber-soft),var(--amber));width:16px;height:16px;margin:-8px 0 0 -8px;
+    box-shadow:0 0 0 4px var(--amber-glow),0 2px 6px rgba(0,0,0,.5);}
   .fare-tag{background:rgba(10,12,16,.82);backdrop-filter:blur(10px);border:1px solid var(--stroke-hi);color:var(--amber);
     font-size:11px;font-weight:700;padding:2px 7px;border-radius:7px;font-family:'Sora';white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.4);}
   .dest-mk{width:24px;height:24px;background:linear-gradient(135deg,var(--go-soft),var(--go));border:2.5px solid #fff;border-radius:50%;
@@ -268,8 +277,8 @@
 
   <!-- Floating map controls (don't cover the map) -->
   <div class="map-ctrls">
-    <button class="mc heat-opt" data-mode="demand" onclick="setHeat('demand')" title="Densité clients">🔥</button>
-    <button class="mc heat-opt" data-mode="money" onclick="setHeat('money')" title="Zones à fort revenu">💰</button>
+    <button class="mc heat-opt" data-mode="demand" onclick="setHeat('demand')" title="Densité historique des demandes">🔥</button>
+    <button class="mc heat-opt" data-mode="balanced" onclick="setHeat('balanced')" title="Bonnes zones d'attente">📍</button>
     <button class="mc" id="ghostBtnMap" onclick="toggleGhostsMap()" title="Clients démo">👥</button>
   </div>
 
@@ -340,7 +349,7 @@ function startLocationBroadcast(){
     const lat=pos.coords.latitude, lng=pos.coords.longitude;
     state.driverPos=[lat,lng];
     if(ME){
-      await sb.from('drivers').update({lat,lng,last_seen:new Date().toISOString(),seats_taken:state.active?state.seats:0,online:state.online}).eq('id',ME.id);
+      await sb.from('drivers').update({lat,lng,last_seen:new Date().toISOString(),seats_taken:state.active?(state.onboard||0):0,online:state.online}).eq('id',ME.id);
       if(state.active && typeof state.active.id==='string'){
         await sb.from('rides').update({driver_lat:lat,driver_lng:lng}).eq('id',state.active.id);
       }
@@ -496,8 +505,34 @@ function refreshGhostRiders(){
   snapGhostsToRoads();          // pull each onto the nearest real road
 }
 
-// ---- Heatmap overlay: density of riders / money per zone ----
-let heatLayers=[], heatMode='off'; // off | demand | money
+// ---- Heatmap overlay: based on HISTORICAL activity ----
+// We tally completed rides into zones: how many pickups (requests) and drop-offs
+// happened in each. "Balanced" zones (pickups >= 90% of drop-offs) are good places
+// to wait, because riders dropped there also tend to request from there.
+let heatLayers=[], heatMode='off'; // off | demand | balanced
+let zoneStats={};  // zoneName -> {pickups, dropoffs}
+function nearestZone(lat,lng){
+  let best=ZONES[0],bd=1e9;
+  for(const z of ZONES){const d=Math.hypot(z.lat-lat,z.lng-lng);if(d<bd){bd=d;best=z;}}
+  return best;
+}
+async function loadHistory(){
+  // seed with simulated baseline so the demo map is populated
+  zoneStats={};
+  ZONES.forEach(z=>{
+    const basePickups=Math.round(z.demand*120 + Math.random()*30);
+    const baseDrops=Math.round(z.demand*110 + Math.random()*40);
+    zoneStats[z.n]={pickups:basePickups, dropoffs:baseDrops};
+  });
+  // fold in REAL completed rides from the database
+  try{
+    const {data}=await sb.from('rides').select('pickup_lat,pickup_lng,drop_lat,drop_lng,status').eq('status','completed').limit(1000);
+    (data||[]).forEach(r=>{
+      if(r.pickup_lat!=null){const z=nearestZone(r.pickup_lat,r.pickup_lng);zoneStats[z.n].pickups++;}
+      if(r.drop_lat!=null){const z=nearestZone(r.drop_lat,r.drop_lng);zoneStats[z.n].dropoffs++;}
+    });
+  }catch(e){}
+}
 function heatColor(v){
   if(v<0.5){ const t=v/0.5; return `${Math.round(52+(255-52)*t)},${Math.round(209+(176-209)*t)},${Math.round(122-122*t)}`; }
   const t=(v-0.5)/0.5; return `255,${Math.round(176-86*t)},0`;
@@ -505,9 +540,20 @@ function heatColor(v){
 function renderHeat(){
   heatLayers.forEach(l=>map.removeLayer(l));heatLayers=[];
   if(heatMode==='off')return;
+  // normalize by the busiest zone
+  const maxReq=Math.max(...ZONES.map(z=>(zoneStats[z.n]?.pickups)||0),1);
   ZONES.forEach(z=>{
-    const v = heatMode==='demand'?z.demand:z.money;
-    const rgb=heatColor(v);
+    const st=zoneStats[z.n]||{pickups:0,dropoffs:0};
+    let v, rgb;
+    if(heatMode==='demand'){
+      v = st.pickups/maxReq;                          // request density
+      rgb=heatColor(v);
+    }else{ // balanced: pickups >= 90% of dropoffs => green "good wait spot"
+      const ratio = st.dropoffs>0 ? st.pickups/st.dropoffs : 1;
+      const good = ratio>=0.9;
+      v = Math.min(1, st.dropoffs/maxReq);
+      rgb = good ? '52,209,122' : '120,130,150';      // green if balanced, grey if not
+    }
     [ {r:1500,a:0.08},{r:1000,a:0.14},{r:560,a:0.22} ].forEach(ring=>{
       const c=L.circle([z.lat,z.lng],{radius:ring.r,stroke:false,fillColor:`rgb(${rgb})`,fillOpacity:ring.a*(0.5+v*0.5),interactive:false}).addTo(map);
       heatLayers.push(c);
@@ -518,8 +564,9 @@ window.setHeat=(mode)=>{
   heatMode = (heatMode===mode)?'off':mode;
   document.querySelectorAll('.heat-opt').forEach(b=>b.classList.toggle('on', b.dataset.mode===heatMode));
   renderHeat();
-  toast(heatMode==='off'?'Heatmap masquée':(heatMode==='demand'?'Densité des clients':'Zones à fort revenu'));
+  toast(heatMode==='off'?'Heatmap masquée':(heatMode==='demand'?'Densité historique des demandes':'Bonnes zones d\'attente (équilibrées)'));
 };
+
 
 
 
@@ -528,7 +575,7 @@ const map=L.map('map',{zoomControl:false,attributionControl:false}).setView(CENT
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'}).addTo(map);
 L.control.zoom({position:'bottomright'}).addTo(map);
 
-const taxiIcon=L.divIcon({className:'',html:'<div class="taxi-mk" id="taxiEl">🚕</div>',iconSize:[36,36],iconAnchor:[18,18]});
+const taxiIcon=L.divIcon({className:'',html:'<div class="taxi-mk" id="taxiEl">🚕</div>',iconSize:[40,40],iconAnchor:[20,20]});
 const taxiMarker=L.marker(state.driverPos,{icon:taxiIcon,zIndexOffset:1000}).addTo(map);
 let riderMarkers=[],routeLine=null,destMarker=null,previewLine=null,previewDest=null,popMarker=null;
 
@@ -537,17 +584,27 @@ function toast(msg){const e=document.getElementById('toast');e.textContent=msg;e
 function stars(v){const n=Math.round(v);return '★'.repeat(n)+'☆'.repeat(5-n);}
 function typeColor(t){return t==='premium'?'var(--amber)':t==='smart'?'var(--blue)':'var(--go)';}
 
+// bearing from a to b in degrees (0=north, clockwise) — for the direction arrow
+function bearing(a,b){
+  const φ1=a[0]*Math.PI/180,φ2=b[0]*Math.PI/180,Δλ=(b[1]-a[1])*Math.PI/180;
+  const y=Math.sin(Δλ)*Math.cos(φ2);
+  const x=Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
+  return (Math.atan2(y,x)*180/Math.PI+360)%360;
+}
 function renderMarkers(){
   riderMarkers.forEach(m=>map.removeLayer(m));riderMarkers=[];
   if(!state.online||state.active)return;
   state.riders.forEach(r=>{
     const sel=state.selected?.id===r.id;
-    const arrow=r.onRoute?'➡️':'↩️';
-    const icon=L.divIcon({className:'',iconSize:[34,34],iconAnchor:[17,34],
-      html:`<div class="rider-mk ${sel?'sel':''} ${r.onRoute?'':'detour'}">
-        <div class="arrow">${arrow}</div>
-        <div class="body"><span>${sel?'★':'◆'}</span></div>
-        <div class="fare-tag" style="position:absolute;left:38px;top:6px;">${r.fare} DH</div>
+    const ang=bearing(r.pickup,r.dropoff);   // point toward the drop-off
+    // small navigation-puck: blue dot + separate triangle arrow (like the screenshot)
+    const icon=L.divIcon({className:'',iconSize:[44,44],iconAnchor:[22,22],
+      html:`<div class="puck ${sel?'sel':''} ${r.onRoute?'':'detour'}">
+        <div class="puck-arrow" style="transform:rotate(${ang}deg);">
+          <svg width="44" height="44" viewBox="0 0 44 44"><path d="M22 3 L29 16 L22 12.5 L15 16 Z" fill="${sel?'#FFC94D':(r.onRoute?'#3E7BFF':'#8fb0ff')}"/></svg>
+        </div>
+        <div class="puck-dot ${sel?'sel':''}"></div>
+        <div class="fare-tag" style="position:absolute;left:30px;top:11px;">${r.fare} DH</div>
       </div>`});
     const m=L.marker(r.pickup,{icon}).addTo(map);
     m.on('click',()=>selectRider(r));riderMarkers.push(m);
@@ -591,7 +648,7 @@ function driveAlong(coords,durationMs,onArrive,onProgress,meterBase=0,legKm=0){
       }
     }
     const ang=Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI;
-    if(taxiEl)taxiEl.style.transform=`rotate(${ang-90}deg)`;
+    // (taxi keeps its upright emoji + bob animation; no rotation)
     routeLine.setLatLngs(coords.slice(idx));
     const remain=Math.ceil((1-t)*durationMs/1000);
     if(state.phase==="toDrop"){
@@ -602,7 +659,7 @@ function driveAlong(coords,durationMs,onArrive,onProgress,meterBase=0,legKm=0){
     if(onProgress&&!state.paused)onProgress(t);
     if(!state.paused)map.panTo([lat,lng],{animate:true,duration:.3});
     if(t<1)animFrame=requestAnimationFrame(step);
-    else{if(taxiEl)taxiEl.style.transform='rotate(0deg)';onArrive();}
+    else{onArrive();}
   }
   animFrame=requestAnimationFrame(step);
 }
@@ -634,7 +691,7 @@ window.selectRiderById=selectRiderById;
 async function acceptRide(){
   if(!state.selected)return;clearPreview();
   const r=state.selected;
-  state.active=r;state.selected=null;state.phase="toPickup";state.seats=1;
+  state.active=r;state.selected=null;state.phase="toPickup";state.seats=1;state.onboard=0;
   state.riders=state.riders.filter(x=>x.id!==r.id);
   state.detourOffered=false;state.landingFired=false;state.trafficChecked=false;
   renderMarkers();renderSheet();showMeter();
@@ -650,6 +707,7 @@ async function acceptRide(){
   const route=await getRoute(state.driverPos,r.pickup);
   driveAlong(route.coords,7000,()=>{
     if(destMarker)map.removeLayer(destMarker);
+    state.onboard=Math.min(3, r.pax||1);   // passengers now in the car
     toast(`${r.name} à bord — direction ${r.dropName}`);
     if(typeof r.id==='string'){ sb.from('rides').update({status:'onboard'}).eq('id',r.id).then(()=>{}); }
     state.phase="toDrop";renderSheet();
@@ -913,6 +971,7 @@ function takePop(){
     getRoute(state.driverPos,candAt).then(rt=>{
       driveAlong(rt.coords,5500,()=>{
         if(destMarker)map.removeLayer(destMarker);
+        state.onboard=Math.min(3,(state.onboard||1)+(cand.pax||1)); // add pooled passenger(s)
         toast(`${cand.name} à bord — direction ${cand.dropName}`);
         state.phase="toDrop";renderSheet();
         // shared destination: drive to the nearer drop, then the other if needed.
@@ -931,8 +990,8 @@ function takePop(){
 // order the two drop-offs by distance from current position (closest first)
 function orderStops(from,p1,p2){
   const d1=map.distance(from,p1.dropoff),d2=map.distance(from,p2.dropoff);
-  const a={name:p1.name,dropoff:p1.dropoff,dropName:p1.dropName,fare:p1.fare};
-  const b={name:p2.name,dropoff:p2.dropoff,dropName:p2.dropName,fare:p2.fare};
+  const a={name:p1.name,dropoff:p1.dropoff,dropName:p1.dropName,fare:p1.fare,pax:p1.pax||1};
+  const b={name:p2.name,dropoff:p2.dropoff,dropName:p2.dropName,fare:p2.fare,pax:p2.pax||1};
   return d1<=d2?[a,b]:[b,a];
 }
 // drive sequentially through drop-off stops, dropping each passenger
@@ -941,7 +1000,7 @@ function runStops(stops){
   function next(){
     if(i>=stops.length){ // all delivered
       if(routeLine)map.removeLayer(routeLine);
-      state.pooled=null;
+      state.pooled=null;state.onboard=0;
       finishPooled(stops);
       return;
     }
@@ -951,6 +1010,7 @@ function runStops(stops){
     getRoute(state.driverPos,stop.dropoff).then(rt=>{
       driveAlong(rt.coords,Math.max(5000,Math.min(11000,rt.distance*6)),()=>{
         if(destMarker)map.removeLayer(destMarker);
+        state.onboard=Math.max(0,(state.onboard||1)-(stop.pax||1)); // passenger(s) dropped
         state.seats=Math.max(1,state.seats-1);
         toast(`${stop.name} déposé${i<stops.length-1?' — passager suivant':''}`);
         i++;next();
@@ -1063,7 +1123,7 @@ function renderSheet(){
       </div>
       <div style="font-size:20px;font-weight:700;letter-spacing:-0.01em;">${r.name}</div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
-        <span class="sub">Capacité</span>${seatHtml(state.seats)}
+        <span class="sub">À bord</span>${seatHtml(state.onboard||0)}
       </div>
       <div class="legs">
         <div class="leg p"><div class="dotline"><span class="dotmark"></span><span class="lbl">Départ</span></div><div style="font-size:12.5px;font-weight:500;">${r.pickupName}</div></div>
@@ -1170,6 +1230,7 @@ renderMarkers();renderSheet();
 initDriver();
 loadRides();                          // pull real data on startup
 refreshGhostRiders();                 // seed demo ride requests
+loadHistory();                        // build zone activity history for heatmap
 setInterval(()=>{ if(!state.active && state.showGhosts!==false) refreshGhostRiders(); }, 18000);
 setTimeout(()=>map.invalidateSize(),120);
 window.addEventListener('resize',()=>map.invalidateSize());
