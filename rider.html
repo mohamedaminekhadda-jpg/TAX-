@@ -137,12 +137,39 @@ async function requestRide(){
 }
 
 function onRideUpdate(row){
+  const prevStatus = state.ride && state.ride.status;
   state.ride=row;
-  if(row.status==='accepted'){state.step='accepted';toast('Taxi en route vers vous !');}
-  else if(row.status==='onboard'){state.step='onboard';toast('Bon voyage !');}
-  else if(row.status==='completed'){state.step='done';toast('Arrivé — merci !');}
+  if(row.status==='accepted'&&prevStatus!=='accepted'){state.step='accepted';toast('Taxi en route vers vous !');}
+  else if(row.status==='onboard'&&prevStatus!=='onboard'){state.step='onboard';toast('Bon voyage !');}
+  else if(row.status==='completed'){state.step='done';toast('Arrivé — merci !');stopTaxiAnim();}
+  // live taxi position
+  if(row.driver_lat!=null && row.driver_lng!=null){
+    moveTaxiTo([row.driver_lat,row.driver_lng]);
+  }
   renderSheet();
 }
+
+// smoothly glide the rider's taxi marker toward each reported position
+let taxiAnim=null, taxiTarget=null;
+function moveTaxiTo(pt){
+  if(!taxiMk){
+    taxiMk=L.marker(pt,{icon:L.divIcon({className:'',html:'<div class="taxi-mk">🚕</div>',iconSize:[34,34],iconAnchor:[17,17]}),zIndexOffset:1000}).addTo(map);
+    taxiMk.setLatLng(pt);
+    if(state.pickup) map.fitBounds(L.latLngBounds([pt,state.pickup]).pad(0.4));
+    return;
+  }
+  taxiTarget=pt;
+  if(taxiAnim)return; // already gliding
+  function glide(){
+    const cur=taxiMk.getLatLng();
+    const dLat=taxiTarget[0]-cur.lat, dLng=taxiTarget[1]-cur.lng;
+    if(Math.abs(dLat)<1e-6&&Math.abs(dLng)<1e-6){taxiAnim=null;return;}
+    taxiMk.setLatLng([cur.lat+dLat*0.15, cur.lng+dLng*0.15]);
+    taxiAnim=requestAnimationFrame(glide);
+  }
+  taxiAnim=requestAnimationFrame(glide);
+}
+function stopTaxiAnim(){if(taxiAnim){cancelAnimationFrame(taxiAnim);taxiAnim=null;}}
 
 async function cancelRide(){
   if(state.ride)await sb.from('rides').update({status:'cancelled'}).eq('id',state.ride.id);
