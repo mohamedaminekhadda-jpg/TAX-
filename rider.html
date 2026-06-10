@@ -6,57 +6,99 @@
 <title>TAX! — Rider</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Sora:wght@600;700;800&display=swap');
-  :root{--bg:#0B0E14;--panel:#121722;--line:#1E2735;--yellow:#FFC107;--blue:#2E6BFF;--red:#FF4D4D;--green:#22C55E;--txt:#E8EDF5;--mut:#7A8699;}
+  @import url('https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+  :root{
+    --bg:#0A0C10; --bg2:#0E1118;
+    --glass:rgba(22,26,34,0.72); --glass-hi:rgba(34,40,52,0.66);
+    --stroke:rgba(255,255,255,0.07); --stroke-hi:rgba(255,255,255,0.13);
+    --amber:#FFB000; --amber-soft:#FFC94D; --amber-glow:rgba(255,176,0,0.45);
+    --go:#34D17A; --go-soft:#5BE39A; --go-glow:rgba(52,209,122,0.4);
+    --blue:#3E7BFF; --red:#FF5A5A;
+    --txt:#F2F5FA; --txt2:#AEB6C4; --txt3:#6B7484;
+    --r-lg:22px; --r-md:16px; --r-sm:11px;
+    --shadow:0 18px 50px -12px rgba(0,0,0,0.7);
+    --ease:cubic-bezier(0.32,0.72,0,1);
+    --ease-soft:cubic-bezier(0.4,0,0.2,1);
+  }
   *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
   html,body{height:100%;overflow:hidden;position:fixed;width:100%;}
-  body{font-family:'Barlow Condensed',sans-serif;background:var(--bg);color:var(--txt);display:flex;justify-content:center;}
-  #app{width:100%;max-width:440px;height:100dvh;position:relative;display:grid;grid-template-rows:auto 1fr;background:var(--bg);overflow:hidden;}
-  .disp{font-family:'Sora',sans-serif;}
-  #hdr{background:linear-gradient(180deg,#141A26,#0B0E14);border-bottom:1px solid var(--line);padding:11px 14px;z-index:600;display:flex;align-items:center;gap:8px;}
-  .mark{font-family:'Sora';font-weight:800;font-size:20px;color:var(--bg);background:var(--yellow);padding:1px 9px;border-radius:5px;letter-spacing:-1px;}
-  .stripe{display:flex;gap:2px;}.stripe i{width:4px;height:18px;border-radius:1px;display:block;}
-  .sub{font-size:11px;color:var(--mut);}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--txt);display:flex;justify-content:center;-webkit-font-smoothing:antialiased;}
+  #app{width:100%;max-width:440px;height:100dvh;position:relative;display:grid;grid-template-rows:auto 1fr;
+    background:radial-gradient(120% 80% at 50% -10%, #12161F 0%, var(--bg) 55%);overflow:hidden;}
+  .disp{font-family:'Sora',sans-serif;font-feature-settings:"tnum" 1;letter-spacing:-0.02em;}
+  #hdr{padding:14px 16px;z-index:600;display:flex;align-items:center;gap:9px;
+    background:linear-gradient(180deg,rgba(14,17,24,0.9),rgba(10,12,16,0));backdrop-filter:blur(12px);
+    opacity:0;transform:translateY(-12px);animation:fadeDown .6s var(--ease) .05s forwards;}
+  .mark{font-family:'Sora';font-weight:800;font-size:19px;color:#0A0C10;background:linear-gradient(135deg,var(--amber-soft),var(--amber));
+    padding:2px 9px;border-radius:7px;letter-spacing:-0.04em;box-shadow:0 2px 10px var(--amber-glow);}
+  .stripe{display:flex;gap:2px;}.stripe i{width:3px;height:16px;border-radius:2px;display:block;opacity:.9;}
+  .sub{font-size:11.5px;color:var(--txt3);font-weight:500;}
   #mapwrap{position:relative;overflow:hidden;}
   #map{position:absolute;inset:0;background:var(--bg);}
-  .leaflet-container{background:#0e1117;font-family:inherit;}
-  .me-mk{width:18px;height:18px;background:var(--blue);border:3px solid #fff;border-radius:50%;box-shadow:0 0 12px var(--blue);}
-  .taxi-mk{width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--yellow);border:2px solid #fff;border-radius:9px;box-shadow:0 0 16px rgba(255,193,7,.7);font-size:17px;}
-  .pin-mk{width:22px;height:22px;background:var(--green);border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 0 10px var(--green);}
-  #sheet{position:absolute;left:0;right:0;bottom:0;z-index:600;background:linear-gradient(180deg,rgba(11,14,20,0),var(--bg) 24%);padding:30px 14px 16px;}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 -4px 30px rgba(0,0,0,.5);}
-  .lbl{font-size:10px;color:var(--mut);letter-spacing:2px;font-weight:700;}
-  .field{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-top:8px;display:flex;align-items:center;gap:10px;}
-  .field .ic{font-size:15px;}
-  .field input{background:transparent;border:none;outline:none;color:var(--txt);font-family:inherit;font-size:15px;width:100%;}
-  .field input::placeholder{color:var(--mut);}
-  .field.pickup{border-left:3px solid var(--yellow);} .field.drop{border-left:3px solid var(--green);}
-  .types{display:flex;gap:7px;margin-top:10px;}
-  .tp{flex:1;text-align:center;padding:9px 4px;border-radius:10px;border:1px solid var(--line);cursor:pointer;}
-  .tp .n{font-size:12px;font-weight:700;letter-spacing:1px;}
-  .tp .p{font-size:11px;color:var(--mut);margin-top:2px;}
-  .tp.on.normal{border-color:var(--green);background:rgba(34,197,94,.12);}
-  .tp.on.smart{border-color:var(--blue);background:rgba(46,107,255,.12);}
-  .tp.on.premium{border-color:var(--yellow);background:rgba(255,193,7,.12);}
-  .est{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:0 2px;}
-  .est .f{font-family:'Sora';font-size:26px;font-weight:800;color:var(--yellow);}
-  .btn{width:100%;margin-top:12px;padding:15px;border:none;border-radius:11px;font-family:inherit;font-weight:800;font-size:15px;letter-spacing:1.5px;cursor:pointer;background:var(--yellow);color:var(--bg);}
-  .btn:disabled{background:var(--line);color:var(--mut);}
-  .btn.cancel{background:transparent;border:1px solid var(--red);color:var(--red);}
-  .status-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
-  .pulse{width:9px;height:9px;border-radius:50%;background:var(--yellow);box-shadow:0 0 8px var(--yellow);animation:pl 1.3s infinite;}
-  @keyframes pl{0%,100%{opacity:1;}50%{opacity:.3;}}
-  .meter-big{font-family:'Sora';font-size:34px;font-weight:800;color:var(--yellow);}
-  .toast{position:absolute;top:62px;left:50%;transform:translateX(-50%);z-index:999;background:rgba(11,14,20,.97);border:1px solid var(--yellow);color:var(--txt);padding:9px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .3s;}
-  .toast.show{opacity:1;}
+  .leaflet-container{background:#0b0d12;font-family:inherit;}
+  .leaflet-control-zoom{display:none;}
+  .me-mk{width:20px;height:20px;background:linear-gradient(135deg,#5b91ff,var(--blue));border:3px solid #fff;border-radius:50%;
+    box-shadow:0 4px 14px rgba(62,123,255,.6);}
+  .me-mk::after{content:"";position:absolute;inset:-8px;border-radius:50%;border:2px solid rgba(62,123,255,.4);animation:ping 2s var(--ease-soft) infinite;}
+  @keyframes ping{0%{transform:scale(.6);opacity:1;}100%{transform:scale(1.6);opacity:0;}}
+  .taxi-mk{width:38px;height:38px;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,var(--amber-soft),var(--amber));border:2.5px solid rgba(255,255,255,.9);border-radius:11px;
+    box-shadow:0 6px 18px var(--amber-glow);font-size:18px;}
+  .pin-mk{width:24px;height:24px;background:linear-gradient(135deg,var(--go-soft),var(--go));border:2.5px solid #fff;border-radius:50% 50% 50% 2px;
+    transform:rotate(-45deg);box-shadow:0 4px 12px var(--go-glow);}
+  #sheet{position:absolute;left:0;right:0;bottom:0;z-index:600;padding:40px 14px 18px;
+    background:linear-gradient(180deg,rgba(10,12,16,0),rgba(10,12,16,.55) 30%,var(--bg) 60%);}
+  .card{background:var(--glass);backdrop-filter:blur(28px) saturate(1.3);border:1px solid var(--stroke-hi);border-radius:var(--r-lg);
+    padding:18px;box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.07);animation:sheetRise .55s var(--ease);}
+  .grab{width:36px;height:4px;border-radius:100px;background:var(--stroke-hi);margin:-6px auto 14px;}
+  .lbl{font-size:10px;color:var(--txt3);letter-spacing:2px;font-weight:600;text-transform:uppercase;}
+  .field{background:rgba(10,12,16,.5);border:1px solid var(--stroke);border-radius:var(--r-md);padding:13px 14px;margin-top:9px;
+    display:flex;align-items:center;gap:11px;cursor:pointer;transition:border-color .3s var(--ease);}
+  .field:active{border-color:var(--stroke-hi);}
+  .field .ic{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+  .field.pickup .ic{background:var(--amber);box-shadow:0 0 8px var(--amber-glow);}
+  .field.drop .ic{background:var(--go);box-shadow:0 0 8px var(--go-glow);}
+  .field input{background:transparent;border:none;outline:none;color:var(--txt);font-family:inherit;font-size:15px;width:100%;font-weight:500;}
+  .field input::placeholder{color:var(--txt3);font-weight:400;}
+  .types{display:flex;gap:8px;margin-top:11px;}
+  .tp{flex:1;text-align:center;padding:11px 4px;border-radius:var(--r-md);border:1px solid var(--stroke);cursor:pointer;
+    transition:all .3s var(--ease);}
+  .tp:active{transform:scale(.97);}
+  .tp .n{font-size:12px;font-weight:700;letter-spacing:.3px;}
+  .tp .p{font-family:'Sora';font-size:13px;font-weight:700;color:var(--txt3);margin-top:3px;}
+  .tp.on.normal{border-color:var(--go);background:rgba(52,209,122,.12);} .tp.on.normal .p{color:var(--go-soft);}
+  .tp.on.smart{border-color:var(--blue);background:rgba(62,123,255,.12);} .tp.on.smart .p{color:#8fb0ff;}
+  .tp.on.premium{border-color:var(--amber);background:rgba(255,176,0,.12);} .tp.on.premium .p{color:var(--amber-soft);}
+  .est{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:0 2px;}
+  .est .f{font-family:'Sora';font-size:27px;font-weight:800;color:var(--amber);letter-spacing:-0.03em;}
+  .btn{width:100%;margin-top:14px;padding:16px;border:none;border-radius:var(--r-md);font-family:inherit;font-weight:800;font-size:15px;
+    letter-spacing:.3px;cursor:pointer;background:linear-gradient(135deg,var(--amber-soft),var(--amber));color:#0A0C10;
+    box-shadow:0 8px 24px var(--amber-glow);transition:transform .2s var(--ease),opacity .3s;}
+  .btn:active{transform:scale(.97);}
+  .btn:disabled{background:var(--stroke-hi);color:var(--txt3);box-shadow:none;}
+  .btn.cancel{background:rgba(255,90,90,.1);border:1px solid rgba(255,90,90,.35);color:var(--red);box-shadow:none;}
+  .status-row{display:flex;align-items:center;gap:11px;margin-bottom:7px;}
+  .pulse{width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 0 var(--amber-glow);animation:beacon 1.8s infinite;}
+  .pulse.go{background:var(--go);box-shadow:0 0 0 0 var(--go-glow);}
+  @keyframes beacon{0%{box-shadow:0 0 0 0 var(--amber-glow);}70%{box-shadow:0 0 0 8px rgba(255,176,0,0);}100%{box-shadow:0 0 0 0 rgba(255,176,0,0);}}
+  .meter-big{font-family:'Sora';font-size:36px;font-weight:800;color:var(--amber);letter-spacing:-0.03em;line-height:1;}
+  .toast{position:absolute;top:64px;left:50%;transform:translateX(-50%) translateY(-12px);z-index:999;
+    background:var(--glass);backdrop-filter:blur(24px) saturate(1.4);border:1px solid var(--stroke-hi);color:var(--txt);
+    padding:11px 18px;border-radius:100px;font-size:13px;font-weight:500;box-shadow:var(--shadow);
+    opacity:0;transition:all .4s var(--ease);max-width:86%;text-align:center;pointer-events:none;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
   .hidden{display:none!important;}
+  ::-webkit-scrollbar{width:0;}
+  @keyframes sheetRise{from{opacity:0;transform:translateY(28px) scale(.98);}to{opacity:1;transform:translateY(0) scale(1);}}
+  @keyframes fadeDown{from{opacity:0;transform:translateY(-12px);}to{opacity:1;transform:translateY(0);}}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;}}
 </style>
 </head>
 <body>
 <div id="app">
   <div id="hdr">
     <span class="mark">TAX<span style="color:var(--red)">!</span></span>
-    <div class="stripe"><i style="background:var(--yellow)"></i><i style="background:var(--blue)"></i><i style="background:var(--red)"></i></div>
+    <div class="stripe"><i style="background:var(--amber)"></i><i style="background:var(--blue)"></i><i style="background:var(--red)"></i></div>
     <div style="margin-left:2px;"><div style="font-size:15px;font-weight:700;">Réserver un taxi</div><div class="sub">Casablanca</div></div>
   </div>
   <div id="mapwrap">
@@ -112,7 +154,7 @@ async function estimate(){
   const r=await getRoute(state.pickup,state.drop);
   estKm=r.distance/1000;
   if(routeLine)map.removeLayer(routeLine);
-  routeLine=L.polyline(r.coords,{color:'#22C55E',weight:4,opacity:.7,dashArray:'6,6'}).addTo(map);
+  routeLine=L.polyline(r.coords,{color:'#34D17A',weight:4,opacity:.7,dashArray:'6,6'}).addTo(map);
   map.fitBounds(L.latLngBounds([state.pickup,state.drop]).pad(0.3));
   renderSheet();
 }
@@ -190,17 +232,17 @@ function renderSheet(){
   if(state.step==='set'){
     const ready=state.pickup&&state.drop;
     s.innerHTML=`<div class="card">
-      <div class="lbl">VOTRE TRAJET</div>
-      <div class="field pickup" onclick="setMode('pickup')"><span class="ic">📍</span>
+      <div class="lbl">Votre trajet</div>
+      <div class="field pickup" onclick="setMode('pickup')"><span class="ic"></span>
         <input readonly placeholder="Touchez la carte pour le départ" value="${state.pickup?'Point de départ défini':''}"></div>
-      <div class="field drop" onclick="setMode('drop')"><span class="ic">🏁</span>
+      <div class="field drop" onclick="setMode('drop')"><span class="ic"></span>
         <input readonly placeholder="Touchez la carte pour la destination" value="${state.drop?'Destination définie':''}"></div>
       <div class="types">
         ${['normal','smart','premium'].map(t=>`<div class="tp ${t} ${state.type===t?'on':''}" onclick="setType('${t}')">
           <div class="n">${t.toUpperCase()}</div><div class="p">${ready?fareFor(t)+' DH':'—'}</div></div>`).join('')}
       </div>
       ${ready?`<div class="est"><span class="sub">${estKm.toFixed(1)} km estimés</span><span class="f">${fareFor(state.type)} DH</span></div>`:''}
-      <button class="btn" ${ready?'':'disabled'} onclick="requestRide()">${ready?'COMMANDER LE TAXI':'DÉFINISSEZ LE TRAJET'}</button>
+      <button class="btn" ${ready?'':'disabled'} onclick="requestRide()">${ready?'Commander le taxi':'Touchez la carte pour commencer'}</button>
     </div>`;
   }else if(state.step==='waiting'){
     s.innerHTML=`<div class="card">
@@ -211,7 +253,7 @@ function renderSheet(){
     </div>`;
   }else if(state.step==='accepted'||state.step==='onboard'){
     s.innerHTML=`<div class="card">
-      <div class="status-row"><div class="pulse" style="background:var(--green);box-shadow:0 0 8px var(--green);"></div>
+      <div class="status-row"><div class="pulse go"></div>
         <div style="font-size:17px;font-weight:700;">${state.step==='accepted'?'Taxi en route vers vous':'En route — compteur actif'}</div></div>
       <div class="lbl" style="margin-top:10px;">COMPTEUR</div>
       <div class="meter-big">${state.ride.fare} DH</div>
