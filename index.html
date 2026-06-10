@@ -116,11 +116,28 @@
   .toast{position:absolute;top:60px;left:50%;transform:translateX(-50%);z-index:999;background:rgba(11,14,20,.97);border:1px solid var(--yellow);color:var(--txt);padding:9px 18px;border-radius:8px;font-size:13px;letter-spacing:.3px;box-shadow:0 4px 20px rgba(255,193,7,.25);opacity:0;transition:opacity .3s;max-width:88%;text-align:center;}
   .toast.show{opacity:1;}
   .hidden{display:none!important;}
+  /* Login overlay */
+  #login{position:absolute;inset:0;z-index:2000;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px;}
+  .login-box{width:100%;max-width:320px;text-align:center;}
+  .login-logo{display:flex;align-items:center;gap:8px;justify-content:center;}
+  #login input{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:14px;color:var(--txt);font-family:inherit;font-size:18px;text-align:center;letter-spacing:3px;outline:none;}
+  #login .btn{width:100%;padding:14px;border:none;border-radius:11px;font-family:inherit;font-weight:800;font-size:15px;letter-spacing:1.5px;cursor:pointer;background:var(--yellow);color:var(--bg);}
   ::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
 </style>
 </head>
 <body>
 <div id="app">
+  <div id="login">
+    <div class="login-box">
+      <div class="login-logo"><span class="mark">TAX<span style="color:var(--red)">!</span></span>
+        <div class="stripe"><i style="background:var(--yellow)"></i><i style="background:var(--blue)"></i><i style="background:var(--red)"></i></div></div>
+      <div style="font-size:18px;font-weight:700;margin:14px 0 4px;">Connexion chauffeur</div>
+      <div class="sub" style="margin-bottom:14px;">Entrez votre code chauffeur</div>
+      <input id="loginCode" inputmode="numeric" placeholder="Code (ex: 1111)" />
+      <button class="btn" style="margin-top:12px;" onclick="doLogin()">SE CONNECTER</button>
+      <div id="loginErr" class="sub" style="color:var(--red);margin-top:10px;min-height:14px;"></div>
+    </div>
+  </div>
   <div id="hdr">
     <div class="row">
       <div class="logo">
@@ -176,6 +193,46 @@
 const SUPABASE_URL = 'https://gazieocibfftbstxefyj.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdhemllb2NpYmZmdGJzdHhlZnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNDAyMDgsImV4cCI6MjA5NjYxNjIwOH0.IrUwdcdCYvKeCoSctJuSPUl1sfZ1U70TRMfkXjW1BAI';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ---- Driver login (pilot-grade: name + code) ----
+let ME = null;            // the logged-in driver row
+async function doLogin(){
+  const code = document.getElementById('loginCode').value.trim();
+  const err = document.getElementById('loginErr');
+  err.textContent='';
+  if(!code){err.textContent='Entrez votre code';return;}
+  const { data, error } = await sb.from('drivers').select('*').eq('login_code',code).maybeSingle();
+  if(error||!data){err.textContent='Code invalide';return;}
+  ME = data;
+  localStorage.setItem('tax_driver_code', code);   // stay logged in on this phone
+  document.getElementById('login').classList.add('hidden');
+  startLocationBroadcast();
+}
+window.doLogin = doLogin;
+
+// auto-login if this phone logged in before
+(async ()=>{
+  const saved = localStorage.getItem('tax_driver_code');
+  if(saved){ document.getElementById('loginCode').value = saved; await doLogin(); }
+})();
+
+// ---- Broadcast this driver's live GPS to the database ----
+let geoWatch = null;
+function startLocationBroadcast(){
+  if(!navigator.geolocation) return;
+  geoWatch = navigator.geolocation.watchPosition(async pos=>{
+    const lat=pos.coords.latitude, lng=pos.coords.longitude;
+    state.driverPos=[lat,lng];
+    if(ME){
+      await sb.from('drivers').update({lat,lng,last_seen:new Date().toISOString()}).eq('id',ME.id);
+      // if on an active ride, also push position onto that ride so the rider sees us move
+      if(state.active && typeof state.active.id==='string'){
+        await sb.from('rides').update({driver_lat:lat,driver_lng:lng}).eq('id',state.active.id);
+      }
+    }
+  },err=>{console.warn('GPS denied',err);},{enableHighAccuracy:true,maximumAge:3000});
+}
+
 
 // Casablanca center
 const CENTER=[33.5899,-7.6039];
@@ -257,6 +314,14 @@ function driveAlong(coords,durationMs,onArrive,onProgress,meterBase=0,legKm=0){
     const a=coords[idx],b=coords[idx+1]||coords[idx];
     const lat=a[0]+(b[0]-a[0])*segT,lng=a[1]+(b[1]-a[1])*segT;
     taxiMarker.setLatLng([lat,lng]);state.driverPos=[lat,lng];
+    // push simulated position to the active ride so the rider sees us move
+    if(!state.paused && state.active && typeof state.active.id==='string'){
+      const tn=performance.now();
+      if(tn-(state._lastPush||0)>1500){
+        state._lastPush=tn;
+        sb.from('rides').update({driver_lat:lat,driver_lng:lng}).eq('id',state.active.id).then(()=>{});
+      }
+    }
     const ang=Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI;
     if(taxiEl)taxiEl.style.transform=`rotate(${ang-90}deg)`;
     routeLine.setLatLngs(coords.slice(idx));
