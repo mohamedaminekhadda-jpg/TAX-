@@ -366,6 +366,7 @@ async function requestRide(){
 
 function onRideUpdate(row){
   const prevStatus = state.ride && state.ride.status;
+  const prevReroute = state.ride && state.ride.reroute_reason;
   state.ride=row;
   if(row.status==='accepted'&&prevStatus!=='accepted'){state.step='accepted';toast('Taxi en route vers vous !');}
   else if(row.status==='onboard'&&prevStatus!=='onboard'){state.step='onboard';toast('Bon voyage !');}
@@ -373,6 +374,11 @@ function onRideUpdate(row){
   // live taxi position
   if(row.driver_lat!=null && row.driver_lng!=null){
     moveTaxiTo([row.driver_lat,row.driver_lng]);
+  }
+  // driver proposed a reroute due to traffic
+  if(row.reroute_reason && row.reroute_reason!==prevReroute){
+    state.reroute={title:'🚗 Trafic sur votre route',why:row.reroute_reason,saveMin:row.reroute_save_min||3,moneyTxt:'même prix',realRide:true};
+    renderReroutePop();
   }
   renderSheet();
 }
@@ -651,7 +657,6 @@ window.hailGhost=(id)=>{
 
 async function simulateGhostRide(g){
   if(g.marker)g.marker.closePopup();
-  // freeze other ghosts' wandering so the chosen one is clear
   state.ghostRiding=true;
   state.step='accepted';
   state.ride={fare:fareFor(state.type),ghost:g};
@@ -661,21 +666,100 @@ async function simulateGhostRide(g){
   driveGhost(g,r1.coords,4500,async()=>{
     toast('À bord — en route');
     state.step='onboard';renderSheet();
-    const r2=await getRoute(state.pickup,state.drop);
-    driveGhost(g,r2.coords,7000,()=>{
+    // fetch route WITH alternatives so we can offer a reroute on traffic
+    const main=await getRouteAlt(state.pickup,state.drop);
+    state.trafficChecked=false;
+    driveGhost(g,main.coords,8000,()=>{
       state.step='done';state.ghostRiding=false;renderSheet();
       toast('Arrivé — merci !');
+    },(t)=>{
+      // ~35% in, hit "traffic" and offer the alternate route (if one exists)
+      if(!state.trafficChecked && t>0.33){
+        state.trafficChecked=true;
+        if(main.alt){ offerReroute(g,main,main.alt); }
+      }
     });
   });
 }
-function driveGhost(g,coords,dur,done){
+
+// OSRM with alternatives
+async function getRouteAlt(a,b){
+  try{
+    const u=`https://router.project-osrm.org/route/v1/driving/${a[1]},${a[0]};${b[1]},${b[0]}?overview=full&geometries=geojson&alternatives=true`;
+    const r=await(await fetch(u)).json();
+    if(r.routes&&r.routes[0]){
+      const m=r.routes[0];
+      const alt=r.routes[1]||null;
+      return {
+        coords:m.geometry.coordinates.map(c=>[c[1],c[0]]),
+        duration:m.duration, distance:m.distance,
+        alt: alt?{coords:alt.geometry.coordinates.map(c=>[c[1],c[0]]),duration:alt.duration,distance:alt.distance}:null
+      };
+    }
+  }catch(e){}
+  return {coords:[a,b],duration:600,distance:5000,alt:null};
+}
+
+// reroute offer: pause the cab, show reason + time/money delta, accept/deny
+function offerReroute(g,main,alt){
+  state.ghostPaused=true;
+  // simulate that the MAIN route is now congested: inflate its effective time
+  const reasons=[["🚧 Route bloquée plus loin","des travaux bloquent votre route actuelle"],
+                 ["🚗 Trafic dense","embouteillage important signalé devant"],
+                 ["⛔ Accident signalé","un accident ralentit fortement la circulation"]];
+  const [title,why]=reasons[Math.floor(Math.random()*reasons.length)];
+  const congestedMain=main.duration*1.6;               // current route now much slower
+  const saveSec=Math.max(30,Math.round(congestedMain-alt.duration));
+  const saveMin=Math.round(saveSec/60);
+  // money: extra distance vs time saved — legal meter reflects actual route
+  const kmDelta=((alt.distance-main.distance)/1000);
+  const moneyDelta=Math.round(kmDelta*DH);             // + means alt costs a bit more in distance
+  const moneyTxt = moneyDelta>0 ? `+${moneyDelta} DH` : (moneyDelta<0?`${moneyDelta} DH`:'même prix');
+  state.reroute={g,main,alt,saveMin,moneyTxt,title,why};
+  renderReroutePop();
+}
+function renderReroutePop(){
+  const r=state.reroute;if(!r)return;
+  let pop=document.getElementById('reroutePop');
+  if(!pop){pop=document.createElement('div');pop.id='reroutePop';pop.className='pop landing';document.getElementById('mapwrap').appendChild(pop);}
+  pop.innerHTML=`<div class="pop-head" style="color:var(--amber-soft);">${r.title}</div>
+    <div style="font-size:13px;color:var(--txt2);line-height:1.4;margin-bottom:12px;">
+      Votre chauffeur propose un autre itinéraire car ${r.why}.
+      <div style="margin-top:8px;display:flex;gap:16px;">
+        <div><div class="lbl">Temps gagné</div><div style="font-family:'Sora';font-weight:800;color:var(--go-soft);font-size:18px;">~${r.saveMin} min</div></div>
+        <div><div class="lbl">Tarif</div><div style="font-family:'Sora';font-weight:800;color:var(--amber);font-size:18px;">${r.moneyTxt}</div></div>
+      </div>
+    </div>
+    <div class="pop-act">
+      <button class="btn pskip" onclick="denyReroute()">Garder la route</button>
+      <button class="btn ptake" style="background:linear-gradient(135deg,var(--amber-soft),var(--amber));color:#0A0C10;" onclick="acceptReroute()">Accepter le détour</button>
+    </div>`;
+  requestAnimationFrame(()=>pop.classList.add('show'));
+}
+function closeReroutePop(){const p=document.getElementById('reroutePop');if(p)p.classList.remove('show');}
+window.acceptReroute=()=>{
+  const r=state.reroute;closeReroutePop();state.ghostPaused=false;
+  if(r && r.realRide){ toast('Nouvel itinéraire accepté'); state.reroute=null; return; }
+  if(r){ toast('Nouvel itinéraire accepté');
+    driveGhost(r.g,r.alt.coords,7000,()=>{state.step='done';state.ghostRiding=false;renderSheet();toast('Arrivé — merci !');});
+  }
+  state.reroute=null;
+};
+window.denyReroute=()=>{
+  closeReroutePop();state.ghostPaused=false;state.reroute=null;
+  toast('Itinéraire conservé');
+};
+
+function driveGhost(g,coords,dur,done,onProg){
   if(routeLine)map.removeLayer(routeLine);
   routeLine=L.polyline(coords,{color:'#FFB000',weight:5,opacity:.8,lineCap:'round'}).addTo(map);
   let segLens=[],total=0;
   for(let i=0;i<coords.length-1;i++){const d=map.distance(coords[i],coords[i+1]);segLens.push(d);total+=d;}
-  const start=performance.now();
+  let elapsed=0,last=performance.now();
   function step(now){
-    let t=Math.min((now-start)/dur,1),target=t*total,acc=0,idx=0;
+    const dt=now-last;last=now;
+    if(!state.ghostPaused)elapsed+=dt;
+    let t=Math.min(elapsed/dur,1),target=t*total,acc=0,idx=0;
     while(idx<segLens.length&&acc+segLens[idx]<target){acc+=segLens[idx];idx++;}
     if(idx>=segLens.length)idx=segLens.length-1;
     const segT=segLens[idx]?(target-acc)/segLens[idx]:0;
@@ -684,7 +768,8 @@ function driveGhost(g,coords,dur,done){
     g.lat=lat;g.lng=lng;
     if(g.marker)g.marker.setLatLng([lat,lng]);
     routeLine.setLatLngs(coords.slice(idx));
-    map.panTo([lat,lng],{animate:true,duration:.3});
+    if(!state.ghostPaused)map.panTo([lat,lng],{animate:true,duration:.3});
+    if(onProg&&!state.ghostPaused)onProg(t);
     if(t<1)requestAnimationFrame(step);else done();
   }
   requestAnimationFrame(step);
