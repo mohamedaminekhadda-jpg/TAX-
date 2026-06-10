@@ -353,10 +353,28 @@ const DETOUR_POOL=[
   {id:102,name:"Sara M.",   at:[33.5775,-7.5955],atName:"Avenue Lalla Yacout", dropoff:[33.5728,-7.5890],dropName:"Casa Port Gare",  fare:14,rating:4.9,type:"smart"},
 ];
 // passengers waiting near a drop-off (Landing Radar)
-const LANDING_POOL=[
-  {id:201,name:"Bilal K.", at:[33.5740,-7.5905],atName:"50m from drop-off",dropoff:[33.6010,-7.6300],dropName:"Gauthier",fare:26,rating:4.7,type:"normal"},
-  {id:202,name:"Yasmine D.",at:[33.5725,-7.5890],atName:"40m from drop-off",dropoff:[33.5950,-7.6180],dropName:"Bd Mohammed V",fare:22,rating:4.9,type:"smart"},
-];
+// Landing candidates are generated dynamically near the drop-off (< ~900m real distance)
+function makeLandingCandidates(near, count){
+  const out=[];
+  for(let i=0;i<count;i++){
+    // ~0.004 deg ≈ 350-450m; keep within ~900m so it's a quick grab
+    const ang=Math.random()*2*Math.PI, rad=0.0015+Math.random()*0.0065;
+    const at=[near[0]+Math.cos(ang)*rad, near[1]+Math.sin(ang)*rad*1.15];
+    const dropoff=[near[0]+(Math.random()-0.5)*0.06, near[1]+(Math.random()-0.5)*0.06];
+    const dr=nearestRepere(dropoff[0],dropoff[1]);
+    const km=map.distance(at,dropoff)/1000;
+    const type=['normal','normal','smart','premium'][Math.floor(Math.random()*4)];
+    out.push({
+      id:'land'+Date.now()+i,
+      name:GHOST_RIDER_NAMES[Math.floor(Math.random()*GHOST_RIDER_NAMES.length)],
+      at, atName:nearestRepere(at[0],at[1]).name,
+      dropoff, dropName:dr.name,
+      fare:Math.max(7,Math.round(7+km*DH*(type==='premium'?1.5:type==='smart'?0.9:1))),
+      rating:+(4.4+Math.random()*0.6).toFixed(1), type
+    });
+  }
+  return out;
+}
 
 let state={riders:[...RIDERS],selected:null,active:null,phase:"idle",online:true,auto:false,
   earnings:187,trips:9,driverPos:[...DRIVER_START],seats:1,showGhosts:true,
@@ -395,7 +413,7 @@ function refreshGhostRiders(){
   const center=state.driverPos||DRIVER_START;
   // keep only DB (string-id) riders, replace ghost ones
   const dbRiders=state.riders.filter(r=>!r.ghost);
-  state.riders=[...dbRiders, ...makeGhostRiders(center, 4+Math.floor(Math.random()*3))];
+  state.riders=[...dbRiders, ...makeGhostRiders(center, 7+Math.floor(Math.random()*4))];
   renderMarkers();renderSheet();
 }
 
@@ -518,6 +536,9 @@ async function acceptRide(){
   if(typeof r.id==='string'){ sb.from('rides').update({status:'accepted'}).eq('id',r.id).then(()=>{}); }
   if(destMarker)map.removeLayer(destMarker);
   destMarker=L.marker(r.pickup,{icon:L.divIcon({className:'',html:'<div class="dest-mk">👤</div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map);
+  // IV.3: for SMART rides (demo on), surface route-compatible riders while
+  // driving to pick up the first rider AND while dropping them off.
+  if(r.type==='smart' && state.showGhosts!==false){ startRouteLockScan(r); }
   const route=await getRoute(state.driverPos,r.pickup);
   driveAlong(route.coords,7000,()=>{
     if(destMarker)map.removeLayer(destMarker);
@@ -525,9 +546,7 @@ async function acceptRide(){
     if(typeof r.id==='string'){ sb.from('rides').update({status:'onboard'}).eq('id',r.id).then(()=>{}); }
     state.phase="toDrop";renderSheet();
     destMarker=L.marker(r.dropoff,{icon:L.divIcon({className:'',html:'<div class="dest-mk">🏁</div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map);
-    // IV.3 Dynamic Routing: for SMART rides the route locks and the map filters
-    // to show only route-compatible requests, refreshed as we drive.
-    if(r.type==='smart' && state.seats<3){ startRouteLockScan(r); }
+    // (route-lock scan already running from the pickup leg for smart rides)
     getRoute(r.pickup,r.dropoff).then(r2=>{
       const legKm=r2.distance/1000;
       driveAlong(r2.coords,12000,()=>{
@@ -558,7 +577,7 @@ function startRouteLockScan(first){
   state.routeLocked=true;
   document.getElementById('meter').classList.add('pooling');
   scanCompatible(first);
-  routeScanTimer=setInterval(()=>scanCompatible(first),4000);
+  routeScanTimer=setInterval(()=>scanCompatible(first),5000);
 }
 function stopRouteLockScan(){
   state.routeLocked=false;state.compatible=[];
@@ -569,25 +588,60 @@ function stopRouteLockScan(){
 }
 async function scanCompatible(first){
   if(state.seats>=3||state.paused){return;}
-  // pool of candidates = current waiting riders (DB + ghosts) along the route
-  const pool=[...state.riders, ...DETOUR_POOL.map(d=>({id:d.id,name:d.name,pickup:d.at,pickupName:d.atName,repere:d.atName,dropoff:d.dropoff,dropName:d.dropName,fare:d.fare,rating:d.rating,type:'smart',pax:1}))];
   const now=state.driverPos, d1=first.dropoff;
+  // Build a candidate pool: real/ghost waiting riders + freshly-generated
+  // riders scattered NEAR the route (so they're quick, low-overhead grabs).
+  const generated=makeRouteCandidates(now, d1, 6);
+  const fromList=state.riders.filter(r=>r.id!==first.id).map(r=>({
+    id:r.id,name:r.name,at:r.pickup,atName:r.repere||r.pickupName,
+    dropoff:r.dropoff,dropName:r.dropName,fare:r.fare,rating:r.rating,type:r.type
+  }));
+  const pool=[...fromList, ...generated];
   const baseline=await routeTime(now,d1);
   const compatible=[];
   for(const c of pool){
-    if(c.id===first.id)continue;
-    const toPick=await routeTime(now,c.at||c.pickup);
-    const cdrop=c.dropoff;
-    const aTime=toPick+await routeTime(c.at||c.pickup,cdrop)+await routeTime(cdrop,d1);
-    const bTime=toPick+await routeTime(c.at||c.pickup,d1)+await routeTime(d1,cdrop);
+    // quick proximity gate first (cheap): pickup must be reasonably near the
+    // straight line between us and the drop-off, and not far from the drop point.
+    const detourGuess=map.distance(now,c.at)+map.distance(c.at,d1)-map.distance(now,d1);
+    if(detourGuess>1500) continue;            // skip obvious far-off ones (>~1.5km extra)
+    const toPick=await routeTime(now,c.at);
+    const aTime=toPick+await routeTime(c.at,c.dropoff)+await routeTime(c.dropoff,d1);
+    const bTime=toPick+await routeTime(c.at,d1)+await routeTime(d1,c.dropoff);
     const best2=Math.min(aTime,bTime);
     const overhead=(best2-baseline)/baseline;
-    if(overhead<=0.30){ compatible.push({...c, _overhead:Math.round(overhead*100), _order:(aTime<=bTime?'before':'after')}); }
+    const pickDistM=Math.round(map.distance(now,c.at));
+    if(overhead<=0.30){
+      compatible.push({...c, _overhead:Math.round(overhead*100), _order:(aTime<=bTime?'before':'after'), _pickM:pickDistM});
+    }
     if(compatible.length>=4)break;
   }
-  state.compatible=compatible.sort((a,b)=>a._overhead-b._overhead);
+  // closest + lowest-overhead first
+  state.compatible=compatible.sort((a,b)=>(a._overhead-b._overhead)||(a._pickM-b._pickM));
   renderCompatible();
   renderSheet();
+}
+// generate candidate riders scattered near the route between a and b
+function makeRouteCandidates(a,b,count){
+  const out=[];
+  for(let i=0;i<count;i++){
+    const f=0.2+Math.random()*0.6;                 // a point along the a->b line
+    const baseLat=a[0]+(b[0]-a[0])*f, baseLng=a[1]+(b[1]-a[1])*f;
+    const jitter=0.0015+Math.random()*0.004;       // ~150-450m off the line
+    const ang=Math.random()*2*Math.PI;
+    const at=[baseLat+Math.cos(ang)*jitter, baseLng+Math.sin(ang)*jitter];
+    // their destination: near the first rider's drop-off (so it's truly shareable)
+    const dr=[b[0]+(Math.random()-0.5)*0.012, b[1]+(Math.random()-0.5)*0.012];
+    const drRep=nearestRepere(dr[0],dr[1]);
+    const km=map.distance(at,dr)/1000;
+    out.push({
+      id:'pool'+Date.now()+i,
+      name:GHOST_RIDER_NAMES[Math.floor(Math.random()*GHOST_RIDER_NAMES.length)],
+      at, atName:nearestRepere(at[0],at[1]).name,
+      dropoff:dr, dropName:drRep.name,
+      fare:Math.max(7,Math.round(7+km*DH*0.9)), rating:+(4.4+Math.random()*0.6).toFixed(1), type:'smart'
+    });
+  }
+  return out;
 }
 function renderCompatible(){
   (state.compatMarkers||[]).forEach(m=>map.removeLayer(m));state.compatMarkers=[];
@@ -678,7 +732,14 @@ function offerPop(kind,preChosen){
     cand = preChosen || [...DETOUR_POOL].sort((a,b)=>
       map.distance(a.dropoff,state.active.dropoff)-map.distance(b.dropoff,state.active.dropoff))[0];
   }else{
-    cand=LANDING_POOL[Math.floor(Math.random()*LANDING_POOL.length)];
+    // generate fresh candidates near the ACTUAL drop-off, pick the closest (<1km)
+    const dropPt=state.active.dropoff;
+    const cands=makeLandingCandidates(dropPt, 4)
+      .map(c=>({...c, _distM:Math.round(map.distance(c.at, dropPt))}))
+      .filter(c=>c._distM<1000)
+      .sort((a,b)=>a._distM-b._distM);
+    if(cands.length===0){ return; }   // nothing genuinely near — skip the offer
+    cand=cands[0];
   }
   state.pendingPop=cand;state.popKind=kind;
   const at=cand.at;
@@ -688,14 +749,13 @@ function offerPop(kind,preChosen){
   pop.className='pop '+kind;
   document.getElementById('popTake').textContent=kind==='detour'?'Prendre en chemin':'Réserver le prochain';
   document.getElementById('popHead').textContent=kind==='detour'?'Passager sur votre route':'Client près de votre arrivée';
-  const shareKm=kind==='detour'?(map.distance(cand.dropoff,state.active.dropoff)/1000).toFixed(1):null;
   const note=kind==='detour'
     ?`→ ${cand.dropName} · ${cand._order==='before'?'sur votre route':'après votre arrivée'}${cand._overhead!=null?` · +${cand._overhead}% temps`:''}`
-    :`En attente ${cand.atName} · prêt à votre dépose`;
+    :`📍 ${cand.atName} · à ${cand._distM} m de votre dépose · prêt`;
   document.getElementById('popBody').innerHTML=`
     <div>
       <div style="font-size:18px;font-weight:700;color:var(--txt);">${cand.name}</div>
-      <div class="sub" style="margin-top:2px;">📍 ${cand.atName}</div>
+      <div class="sub" style="margin-top:2px;">→ ${cand.dropName}</div>
       <div style="font-size:11px;color:${kind==='detour'?'#8fb0ff':'var(--amber)'};margin-top:3px;">${note}</div>
       <div style="margin-top:3px;"><span class="stars">${stars(cand.rating)}</span></div>
     </div>
@@ -897,7 +957,7 @@ function renderSheet(){
         <div class="ph">🔒 Itinéraire verrouillé · ${(state.compatible||[]).length} compatible${(state.compatible||[]).length!==1?'s':''}</div>
         ${(state.compatible||[]).length===0?`<div class="sub">Recherche de passagers sur votre route…</div>`:
           (state.compatible||[]).map(c=>`<div class="pool-chip" onclick="addCompatible('${c.id}')">
-            <div><div class="pn">${c.name}</div><div class="pm">↑ ${c.repere||c.pickupName} · ${c._order==='before'?'sur la route':'après'} · +${c._overhead}%</div></div>
+            <div><div class="pn">${c.name}</div><div class="pm">↑ ${c.atName||c.repere} · ${c._pickM!=null?c._pickM+' m':''} · ${c._order==='before'?'sur la route':'après'} · +${c._overhead}%</div></div>
             <div class="pf">+${c.fare}</div>
           </div>`).join('')}
       </div>`:''}
