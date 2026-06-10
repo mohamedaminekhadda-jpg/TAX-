@@ -179,17 +179,24 @@
   ::-webkit-scrollbar{width:0;}
 
   /* ---- Login ---- */
-  #login{position:absolute;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:28px;
-    background:radial-gradient(130% 90% at 50% 0%, #14181F 0%, var(--bg) 60%);animation:fadeIn .5s var(--ease-soft);}
-  .login-box{width:100%;max-width:330px;text-align:center;animation:sheetRise .6s var(--ease);}
-  .login-logo{display:flex;align-items:center;gap:9px;justify-content:center;margin-bottom:6px;}
-  #login .lo-title{font-family:'Sora';font-size:22px;font-weight:800;margin:18px 0 5px;letter-spacing:-0.02em;}
-  #login input{width:100%;background:var(--glass);backdrop-filter:blur(20px);border:1px solid var(--stroke-hi);border-radius:var(--r-md);
-    padding:16px;color:var(--txt);font-family:'Sora';font-size:20px;text-align:center;letter-spacing:6px;outline:none;
-    transition:border-color .3s,box-shadow .3s;}
-  #login input:focus{border-color:var(--amber);box-shadow:0 0 0 4px var(--amber-glow);}
-  #login .btn{width:100%;margin-top:13px;padding:16px;background:linear-gradient(135deg,var(--amber-soft),var(--amber));color:#0A0C10;
-    font-weight:800;font-size:15px;letter-spacing:.5px;box-shadow:0 8px 24px var(--amber-glow);}
+  /* Splash / loading screen */
+  #splash{position:absolute;inset:0;z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
+    background:radial-gradient(130% 90% at 50% 35%, #14181F 0%, var(--bg) 60%);transition:opacity .5s var(--ease),visibility .5s;}
+  #splash.gone{opacity:0;visibility:hidden;}
+  .splash-logo{transform:scale(.6);opacity:0;animation:logoPop .7s var(--ease) .1s forwards;}
+  .logo-img{display:block;width:auto;}
+  .splash-img{height:96px;filter:drop-shadow(0 8px 30px rgba(255,176,0,.3));}
+  .header-img{height:30px;}
+  .logo-mark{display:flex;align-items:center;gap:10px;justify-content:center;}
+  .logo-mark .mark{font-size:34px;padding:4px 14px;border-radius:11px;}
+  .logo-mark .stripe i{width:5px;height:30px;}
+  .splash-bar{width:140px;height:4px;border-radius:100px;background:var(--stroke-hi);overflow:hidden;
+    opacity:0;animation:fadeIn .4s ease .5s forwards;}
+  .splash-fill{height:100%;width:0;border-radius:100px;background:linear-gradient(90deg,var(--amber-soft),var(--amber));
+    box-shadow:0 0 12px var(--amber-glow);animation:charge 1.4s var(--ease) .55s forwards;}
+  .splash-tag{font-size:12px;color:var(--txt3);letter-spacing:1px;opacity:0;animation:fadeIn .5s ease .8s forwards;}
+  @keyframes logoPop{0%{transform:scale(.6);opacity:0;}60%{transform:scale(1.06);}100%{transform:scale(1);opacity:1;}}
+  @keyframes charge{from{width:0;}to{width:100%;}}
 
   @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
   @keyframes fadeDown{from{opacity:0;transform:translateY(-12px);}to{opacity:1;transform:translateY(0);}}
@@ -201,22 +208,17 @@
 </head>
 <body>
 <div id="app">
-  <div id="login">
-    <div class="login-box">
-      <div class="login-logo"><span class="mark">TAX<span style="color:var(--red)">!</span></span>
-        <div class="stripe"><i style="background:var(--amber)"></i><i style="background:var(--blue)"></i><i style="background:var(--red)"></i></div></div>
-      <div class="lo-title">Bienvenue</div>
-      <div class="sub" style="margin-bottom:16px;">Entrez votre code chauffeur pour commencer</div>
-      <input id="loginCode" inputmode="numeric" placeholder="••••" />
-      <button class="btn" onclick="doLogin()">Se connecter</button>
-      <div id="loginErr" class="sub" style="color:var(--red);margin-top:11px;min-height:14px;"></div>
+  <div id="splash">
+    <div class="splash-logo">
+      <img src="logo-dark.svg" alt="TAX!" class="logo-img splash-img">
     </div>
+    <div class="splash-bar"><div class="splash-fill"></div></div>
+    <div class="splash-tag">Casablanca · transport agréé</div>
   </div>
   <div id="hdr">
     <div class="row">
       <div class="logo">
-        <span class="mark">TAX<span style="color:var(--red)">!</span></span>
-        <div class="stripe"><i style="background:var(--amber)"></i><i style="background:var(--blue)"></i><i style="background:var(--red)"></i></div>
+        <img src="logo-dark.svg" alt="TAX!" class="logo-img header-img">
         <div style="margin-left:4px;">
           <div class="name">Youssef B.</div>
           <div style="display:flex;gap:8px;"><span class="sub">Petit Taxi · A-2841</span><span class="stars">★★★★★</span></div>
@@ -268,30 +270,31 @@ const SUPABASE_URL = 'https://gazieocibfftbstxefyj.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdhemllb2NpYmZmdGJzdHhlZnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNDAyMDgsImV4cCI6MjA5NjYxNjIwOH0.IrUwdcdCYvKeCoSctJuSPUl1sfZ1U70TRMfkXjW1BAI';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ---- Driver login (pilot-grade: name + code) ----
-let ME = null;            // the logged-in driver row
-async function doLogin(){
-  const code = document.getElementById('loginCode').value.trim();
-  const err = document.getElementById('loginErr');
-  err.textContent='';
-  if(!code){err.textContent='Entrez votre code';return;}
-  const { data, error } = await sb.from('drivers').select('*').eq('login_code',code).maybeSingle();
-  if(error||!data){err.textContent='Code invalide';return;}
+// ---- Driver session (no login for pilot): auto-assign a driver ----
+let ME = null;
+async function initDriver(){
+  // pick an existing driver, or fall back to a default identity if the table is empty
+  let { data } = await sb.from('drivers').select('*').order('created_at',{ascending:true}).limit(1).maybeSingle();
+  if(!data){
+    const ins = await sb.from('drivers').insert({name:'Youssef B.',taxi_type:'petit',plate:'A-2841',online:true,rating:4.9}).select().single();
+    data = ins.data;
+  }
   ME = data;
-  localStorage.setItem('tax_driver_code', code);   // stay logged in on this phone
-  document.getElementById('login').classList.add('hidden');
-  // appear to riders immediately (GPS may refine this shortly)
+  // reflect identity in the header
+  if(ME){
+    const nm=document.querySelector('#hdr .name'); if(nm)nm.textContent=ME.name;
+    const meta=document.querySelector('#hdr .logo .sub'); 
+  }
   const p=state.driverPos||DRIVER_START;
-  await sb.from('drivers').update({online:true,lat:p[0],lng:p[1],seats_taken:0,last_seen:new Date().toISOString()}).eq('id',ME.id);
+  if(ME) await sb.from('drivers').update({online:true,lat:p[0],lng:p[1],seats_taken:0,last_seen:new Date().toISOString()}).eq('id',ME.id);
   startLocationBroadcast();
 }
-window.doLogin = doLogin;
 
-// auto-login if this phone logged in before
-(async ()=>{
-  const saved = localStorage.getItem('tax_driver_code');
-  if(saved){ document.getElementById('loginCode').value = saved; await doLogin(); }
-})();
+// dismiss the splash after the logo "charges", then boot the app
+function dismissSplash(){
+  const sp=document.getElementById('splash');
+  if(sp) sp.classList.add('gone');
+}
 
 // ---- Broadcast this driver's live GPS to the database ----
 let geoWatch = null;
@@ -302,7 +305,6 @@ function startLocationBroadcast(){
     state.driverPos=[lat,lng];
     if(ME){
       await sb.from('drivers').update({lat,lng,last_seen:new Date().toISOString(),seats_taken:state.active?state.seats:0,online:state.online}).eq('id',ME.id);
-      // if on an active ride, also push position onto that ride so the rider sees us move
       if(state.active && typeof state.active.id==='string'){
         await sb.from('rides').update({driver_lat:lat,driver_lng:lng}).eq('id',state.active.id);
       }
@@ -827,9 +829,13 @@ sb.channel('rides-live')
   .subscribe();
 
 renderMarkers();renderSheet();
+initDriver();
 loadRides();                          // pull real data on startup
 setTimeout(()=>map.invalidateSize(),120);
 window.addEventListener('resize',()=>map.invalidateSize());
+// let the logo "charge" (~2s) then reveal the app
+setTimeout(dismissSplash,2000);
+window.addEventListener('load',()=>setTimeout(dismissSplash,2000));
 </script>
 </body>
 </html>
