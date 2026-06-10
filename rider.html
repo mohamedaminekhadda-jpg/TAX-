@@ -38,8 +38,14 @@
   .leaflet-container{background:#0b0d12;font-family:inherit;}
   .leaflet-control-zoom{display:none;}
   .me-mk{width:20px;height:20px;background:linear-gradient(135deg,#5b91ff,var(--blue));border:3px solid #fff;border-radius:50%;
-    box-shadow:0 4px 14px rgba(62,123,255,.6);}
+    box-shadow:0 4px 14px rgba(62,123,255,.6);position:relative;}
   .me-mk::after{content:"";position:absolute;inset:-8px;border-radius:50%;border:2px solid rgba(62,123,255,.4);animation:ping 2s var(--ease-soft) infinite;}
+  /* direction arrow pointing to drop-off */
+  .dir-wrap{position:relative;width:54px;height:54px;display:flex;align-items:center;justify-content:center;}
+  .dir-dot{width:18px;height:18px;background:linear-gradient(135deg,#5b91ff,var(--blue));border:3px solid #fff;border-radius:50%;box-shadow:0 4px 14px rgba(62,123,255,.6);position:relative;z-index:2;}
+  .dir-dot::after{content:"";position:absolute;inset:-7px;border-radius:50%;border:2px solid rgba(62,123,255,.4);animation:ping 2s var(--ease-soft) infinite;}
+  .dir-arrow{position:absolute;top:50%;left:50%;width:54px;height:54px;transform-origin:center;pointer-events:none;}
+  .dir-arrow svg{position:absolute;top:-2px;left:50%;transform:translateX(-50%);filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));}
   @keyframes ping{0%{transform:scale(.6);opacity:1;}100%{transform:scale(1.6);opacity:0;}}
   .taxi-mk{width:38px;height:38px;display:flex;align-items:center;justify-content:center;
     background:linear-gradient(135deg,var(--amber-soft),var(--amber));border:2.5px solid rgba(255,255,255,.9);border-radius:11px;
@@ -172,7 +178,20 @@
   .leaflet-popup-tip{background:var(--glass)!important;}
   .leaflet-popup-close-button{color:var(--txt2)!important;}
   .roam-mk{width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:rgba(255,176,0,.18);
-    border:1.5px solid var(--amber);border-radius:8px;font-size:14px;box-shadow:0 2px 10px var(--amber-glow);}
+    border:1.5px solid var(--amber);border-radius:8px;font-size:14px;box-shadow:0 2px 10px var(--amber-glow);transition:transform .3s var(--ease);}
+  .roam-mk.ghost{background:rgba(255,176,0,.12);border-color:rgba(255,176,0,.55);}
+
+  /* Smart ride pooling note */
+  .smart-note{margin-top:11px;padding:11px 13px;background:rgba(62,123,255,.1);border:1px solid rgba(62,123,255,.3);
+    border-radius:var(--r-md);font-size:12.5px;line-height:1.45;color:#c5d6ff;}
+  .smart-note b{color:#fff;font-weight:700;}
+
+  /* Ghost toggle switch */
+  .ghost-toggle{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:13px;border-top:1px solid var(--stroke);}
+  .switch{width:44px;height:26px;border-radius:100px;background:var(--stroke-hi);position:relative;cursor:pointer;transition:background .3s var(--ease);}
+  .switch.on{background:linear-gradient(135deg,var(--amber-soft),var(--amber));}
+  .switch .knob{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.4);transition:transform .3s var(--ease);}
+  .switch.on .knob{transform:translateX(18px);}
   @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;}}
 </style>
 </head>
@@ -260,13 +279,34 @@ function placeLabel(lat,lng){
   return name;
 }
 
-let state={step:'set',pickup:null,drop:null,pickupName:'',dropName:'',settingMode:'pickup',type:'normal',pax:1,ride:null};
+let state={step:'set',pickup:null,drop:null,pickupName:'',dropName:'',settingMode:'pickup',type:'normal',pax:1,ride:null,showGhosts:true};
 
 const map=L.map('map',{zoomControl:false,attributionControl:false}).setView(CENTER,14);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'}).addTo(map);
 let pickupMk=null,dropMk=null,taxiMk=null,routeLine=null;
 
 let toastT;function toast(m){const e=document.getElementById('toast');e.textContent=m;e.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove('show'),3000);}
+
+// bearing from point a to b, in degrees (0 = north, clockwise)
+function bearing(a,b){
+  const φ1=a[0]*Math.PI/180,φ2=b[0]*Math.PI/180,Δλ=(b[1]-a[1])*Math.PI/180;
+  const y=Math.sin(Δλ)*Math.cos(φ2);
+  const x=Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
+  return (Math.atan2(y,x)*180/Math.PI+360)%360;
+}
+function pickupIcon(angle){
+  const arrow = angle==null ? '' :
+    `<div class="dir-arrow" style="transform:translate(-50%,-50%) rotate(${angle}deg);">
+       <svg width="22" height="22" viewBox="0 0 22 22"><path d="M11 1 L17 13 L11 10 L5 13 Z" fill="#5b91ff" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>
+     </div>`;
+  return L.divIcon({className:'',iconSize:[54,54],iconAnchor:[27,27],
+    html:`<div class="dir-wrap">${arrow}<div class="dir-dot"></div></div>`});
+}
+function refreshPickupArrow(){
+  if(!pickupMk||!state.pickup)return;
+  const ang = state.drop ? bearing(state.pickup,state.drop) : null;
+  pickupMk.setIcon(pickupIcon(ang));
+}
 
 // tap map to set pickup, then destination
 map.on('click',e=>{
@@ -276,13 +316,14 @@ map.on('click',e=>{
     state.pickup=pt;
     state.pickupName=placeLabel(pt[0],pt[1]);
     if(pickupMk)map.removeLayer(pickupMk);
-    pickupMk=L.marker(pt,{icon:L.divIcon({className:'',html:'<div class="me-mk"></div>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(map);
+    pickupMk=L.marker(pt,{icon:pickupIcon(null),zIndexOffset:600}).addTo(map);
     state.settingMode='drop';toast('Maintenant, touchez votre destination');
   }else{
     state.drop=pt;
     state.dropName=placeLabel(pt[0],pt[1]);
     if(dropMk)map.removeLayer(dropMk);
     dropMk=L.marker(pt,{icon:L.divIcon({className:'',html:'<div class="pin-mk"></div>',iconSize:[22,22],iconAnchor:[11,22]})}).addTo(map);
+    refreshPickupArrow();   // point the arrow toward the drop-off
   }
   estimate();renderSheet();
 });
@@ -363,7 +404,7 @@ async function cancelRide(){
   resetAll();
 }
 function resetAll(){
-  state={step:'set',pickup:null,drop:null,pickupName:'',dropName:'',settingMode:'pickup',type:'normal',pax:1,ride:null};
+  state={step:'set',pickup:null,drop:null,pickupName:'',dropName:'',settingMode:'pickup',type:'normal',pax:1,ride:null,showGhosts:state.showGhosts!==false,ghostRiding:false};
   [pickupMk,dropMk,routeLine,taxiMk].forEach(m=>{if(m)map.removeLayer(m);});
   pickupMk=dropMk=routeLine=taxiMk=null;estKm=0;
   renderSheet();
@@ -372,6 +413,12 @@ window.requestRide=requestRide;window.cancelRide=cancelRide;window.resetAll=rese
 window.setType=t=>{state.type=t;renderSheet();};
 window.setPax=d=>{state.pax=Math.max(1,Math.min(3,state.pax+d));renderSheet();};
 window.setMode=m=>{state.settingMode=m;toast(m==='pickup'?'Touchez votre position':'Touchez votre destination');};
+window.toggleGhosts=()=>{
+  state.showGhosts = state.showGhosts===false ? true : false;
+  if(state.showGhosts){ if(ghosts.length===0){spawnGhosts(state.pickup||CENTER);} else renderGhosts(); }
+  else { clearGhostMarkers(); }
+  renderSheet();
+};
 window.setStars=n=>{state.reviewStars=n;renderSheet();};
 window.submitReview=async()=>{
   if(state.ride&&state.reviewStars){
@@ -403,8 +450,13 @@ function renderSheet(){
         ${['normal','smart','premium'].map(t=>`<div class="tp ${t} ${state.type===t?'on':''}" onclick="setType('${t}')">
           <div class="n">${t[0].toUpperCase()+t.slice(1)}</div><div class="p">${ready?fareFor(t)+' DH':'—'}</div></div>`).join('')}
       </div>
+      ${state.type==='smart'?`<div class="smart-note">🤝 <b>Trajet partagé</b> — un autre passager allant dans votre direction peut rejoindre la course (détour ≤ 30% du temps). Vous payez moins.</div>`:''}
       ${ready?`<div class="est"><span class="sub">${estKm.toFixed(1)} km · ${state.pax} passager${state.pax>1?'s':''}</span><span class="f">${fareFor(state.type)} DH</span></div>`:''}
       <button class="btn" ${ready?'':'disabled'} onclick="requestRide()">${ready?'Commander le taxi':'Touchez la carte pour commencer'}</button>
+      <div class="ghost-toggle">
+        <span class="sub">Afficher les taxis à proximité</span>
+        <div class="switch ${state.showGhosts!==false?'on':''}" onclick="toggleGhosts()"><div class="knob"></div></div>
+      </div>
     </div>`;
   }else if(state.step==='waiting'){
     s.innerHTML=`<div class="card"><div class="grab"></div>
@@ -510,16 +562,135 @@ function renderPanel(){
 // ---- Rider GPS: show the rider's real position ----
 let myPosMk=null;
 function startRiderGPS(){
-  if(!navigator.geolocation)return;
+  if(!navigator.geolocation){spawnGhosts(CENTER);return;}
   navigator.geolocation.getCurrentPosition(pos=>{
     const p=[pos.coords.latitude,pos.coords.longitude];
     map.setView(p,15);
     if(myPosMk)map.removeLayer(myPosMk);
     myPosMk=L.marker(p,{icon:L.divIcon({className:'',html:'<div class="me-mk"></div>',iconSize:[20,20],iconAnchor:[10,10]}),zIndexOffset:500}).addTo(map);
-  },()=>{ /* denied: keep default city view */ },{enableHighAccuracy:true});
+    spawnGhosts(p);
+  },()=>{ spawnGhosts(CENTER); },{enableHighAccuracy:true});
 }
 
-// ---- Roaming taxis: show nearby online drivers, tappable ----
+// ---- Ghost taxis (demo bots) — scattered near the rider, fully interactable ----
+const GHOST_NAMES=["Hassan A.","Rachid M.","Khalid B.","Said O.","Mehdi T.","Nabil F.","Aziz K.","Driss L."];
+const GHOST_PLATES=["A-3920","B-1192","A-7754","C-2031","A-5567","B-8890","A-4412","C-6628"];
+let ghosts=[];        // {id,name,plate,type,seats,rating,lat,lng,heading,marker}
+let ghostTimer=null;
+
+function spawnGhosts(center){
+  clearGhosts();
+  const n=5+Math.floor(Math.random()*3); // 5-7 taxis
+  for(let i=0;i<n;i++){
+    // scatter within ~1.2km of the center
+    const dLat=(Math.random()-0.5)*0.022, dLng=(Math.random()-0.5)*0.026;
+    ghosts.push({
+      id:'ghost-'+i,
+      name:GHOST_NAMES[i%GHOST_NAMES.length],
+      plate:GHOST_PLATES[i%GHOST_PLATES.length],
+      type:Math.random()>0.7?'grand':'petit',
+      seats:Math.floor(Math.random()*3),          // 0-2 taken
+      rating:(4.4+Math.random()*0.6).toFixed(1),
+      lat:center[0]+dLat, lng:center[1]+dLng,
+      heading:Math.random()*360,
+      marker:null
+    });
+  }
+  if(state.showGhosts!==false) renderGhosts();
+  if(ghostTimer)clearInterval(ghostTimer);
+  ghostTimer=setInterval(roamGhosts,1600);
+}
+function clearGhosts(){
+  ghosts.forEach(g=>{if(g.marker)map.removeLayer(g.marker);});
+  ghosts=[];
+  if(ghostTimer){clearInterval(ghostTimer);ghostTimer=null;}
+}
+function roamGhosts(){
+  if(state.ghostRiding)return;   // freeze wandering while a ride is in progress
+  ghosts.forEach(g=>{
+    // gentle wander: occasionally turn, step forward
+    if(Math.random()<0.3)g.heading+=(Math.random()-0.5)*70;
+    const step=0.0006+Math.random()*0.0005;
+    g.lat+=Math.cos(g.heading*Math.PI/180)*step;
+    g.lng+=Math.sin(g.heading*Math.PI/180)*step;
+    if(g.marker){
+      g.marker.setLatLng([g.lat,g.lng]);
+      const el=g.marker.getElement?.()?.querySelector('.roam-mk');
+      if(el)el.style.transform=`rotate(${g.heading}deg)`;
+    }
+  });
+}
+function ghostPopup(g){
+  const free=3-g.seats, full=free<=0;
+  return `<div class="taxi-pop">
+    <div class="tt">🚕 ${g.name}</div>
+    <div class="meta">${g.type==='grand'?'Grand Taxi':'Petit Taxi'} · ${g.plate}</div>
+    <div class="meta">⭐ ${g.rating} · ${full?'Complet':free+' place'+(free>1?'s':'')+' libre'+(free>1?'s':'')}</div>
+    <div class="seats-mini">${[0,1,2].map(i=>`<span class="sm ${i<g.seats?'full':''}"></span>`).join('')}</div>
+    <button ${full?'disabled':''} onclick="hailGhost('${g.id}')">${full?'Taxi complet':'Héler ce taxi'}</button>
+  </div>`;
+}
+function renderGhosts(){
+  if(!state.showGhosts){clearGhostMarkers();return;}
+  ghosts.forEach(g=>{
+    if(!g.marker){
+      g.marker=L.marker([g.lat,g.lng],{icon:L.divIcon({className:'',html:'<div class="roam-mk ghost">🚕</div>',iconSize:[30,30],iconAnchor:[15,15]})}).addTo(map);
+      g.marker.bindPopup(ghostPopup(g));
+    }else{
+      g.marker.setPopupContent(ghostPopup(g));
+    }
+  });
+}
+function clearGhostMarkers(){ ghosts.forEach(g=>{if(g.marker){map.removeLayer(g.marker);g.marker=null;}}); }
+window.hailGhost=(id)=>{
+  const g=ghosts.find(x=>x.id===id);if(!g)return;
+  if(!state.pickup||!state.drop){toast('Définissez d\'abord votre trajet');return;}
+  toast(`${g.name} arrive vers vous…`);
+  simulateGhostRide(g);
+};
+
+async function simulateGhostRide(g){
+  if(g.marker)g.marker.closePopup();
+  // freeze other ghosts' wandering so the chosen one is clear
+  state.ghostRiding=true;
+  state.step='accepted';
+  state.ride={fare:fareFor(state.type),ghost:g};
+  renderSheet();
+  // drive ghost -> pickup
+  const r1=await getRoute([g.lat,g.lng],state.pickup);
+  driveGhost(g,r1.coords,4500,async()=>{
+    toast('À bord — en route');
+    state.step='onboard';renderSheet();
+    const r2=await getRoute(state.pickup,state.drop);
+    driveGhost(g,r2.coords,7000,()=>{
+      state.step='done';state.ghostRiding=false;renderSheet();
+      toast('Arrivé — merci !');
+    });
+  });
+}
+function driveGhost(g,coords,dur,done){
+  if(routeLine)map.removeLayer(routeLine);
+  routeLine=L.polyline(coords,{color:'#FFB000',weight:5,opacity:.8,lineCap:'round'}).addTo(map);
+  let segLens=[],total=0;
+  for(let i=0;i<coords.length-1;i++){const d=map.distance(coords[i],coords[i+1]);segLens.push(d);total+=d;}
+  const start=performance.now();
+  function step(now){
+    let t=Math.min((now-start)/dur,1),target=t*total,acc=0,idx=0;
+    while(idx<segLens.length&&acc+segLens[idx]<target){acc+=segLens[idx];idx++;}
+    if(idx>=segLens.length)idx=segLens.length-1;
+    const segT=segLens[idx]?(target-acc)/segLens[idx]:0;
+    const a=coords[idx],b=coords[idx+1]||coords[idx];
+    const lat=a[0]+(b[0]-a[0])*segT,lng=a[1]+(b[1]-a[1])*segT;
+    g.lat=lat;g.lng=lng;
+    if(g.marker)g.marker.setLatLng([lat,lng]);
+    routeLine.setLatLngs(coords.slice(idx));
+    map.panTo([lat,lng],{animate:true,duration:.3});
+    if(t<1)requestAnimationFrame(step);else done();
+  }
+  requestAnimationFrame(step);
+}
+
+
 let roamMarkers={};
 async function loadRoamingTaxis(){
   const {data}=await sb.from('drivers').select('*').eq('online',true);
