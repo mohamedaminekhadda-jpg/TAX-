@@ -312,6 +312,7 @@ async function acceptRide(){
   driveAlong(route.coords,7000,()=>{
     if(destMarker)map.removeLayer(destMarker);
     toast(`${r.name} à bord — direction ${r.dropName}`);
+    if(typeof r.id==='string'){ sb.from('rides').update({status:'onboard'}).eq('id',r.id).then(()=>{}); }
     state.phase="toDrop";renderSheet();
     destMarker=L.marker(r.dropoff,{icon:L.divIcon({className:'',html:'<div class="dest-mk">🏁</div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map);
     getRoute(r.pickup,r.dropoff).then(r2=>{

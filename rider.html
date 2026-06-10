@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>TAX! — Rider</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Sora:wght@600;700;800&display=swap');
+  :root{--bg:#0B0E14;--panel:#121722;--line:#1E2735;--yellow:#FFC107;--blue:#2E6BFF;--red:#FF4D4D;--green:#22C55E;--txt:#E8EDF5;--mut:#7A8699;}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;overflow:hidden;position:fixed;width:100%;}
+  body{font-family:'Barlow Condensed',sans-serif;background:var(--bg);color:var(--txt);display:flex;justify-content:center;}
+  #app{width:100%;max-width:440px;height:100dvh;position:relative;display:grid;grid-template-rows:auto 1fr;background:var(--bg);overflow:hidden;}
+  .disp{font-family:'Sora',sans-serif;}
+  #hdr{background:linear-gradient(180deg,#141A26,#0B0E14);border-bottom:1px solid var(--line);padding:11px 14px;z-index:600;display:flex;align-items:center;gap:8px;}
+  .mark{font-family:'Sora';font-weight:800;font-size:20px;color:var(--bg);background:var(--yellow);padding:1px 9px;border-radius:5px;letter-spacing:-1px;}
+  .stripe{display:flex;gap:2px;}.stripe i{width:4px;height:18px;border-radius:1px;display:block;}
+  .sub{font-size:11px;color:var(--mut);}
+  #mapwrap{position:relative;overflow:hidden;}
+  #map{position:absolute;inset:0;background:var(--bg);}
+  .leaflet-container{background:#0e1117;font-family:inherit;}
+  .me-mk{width:18px;height:18px;background:var(--blue);border:3px solid #fff;border-radius:50%;box-shadow:0 0 12px var(--blue);}
+  .taxi-mk{width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:var(--yellow);border:2px solid #fff;border-radius:9px;box-shadow:0 0 16px rgba(255,193,7,.7);font-size:17px;}
+  .pin-mk{width:22px;height:22px;background:var(--green);border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 0 10px var(--green);}
+  #sheet{position:absolute;left:0;right:0;bottom:0;z-index:600;background:linear-gradient(180deg,rgba(11,14,20,0),var(--bg) 24%);padding:30px 14px 16px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 -4px 30px rgba(0,0,0,.5);}
+  .lbl{font-size:10px;color:var(--mut);letter-spacing:2px;font-weight:700;}
+  .field{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-top:8px;display:flex;align-items:center;gap:10px;}
+  .field .ic{font-size:15px;}
+  .field input{background:transparent;border:none;outline:none;color:var(--txt);font-family:inherit;font-size:15px;width:100%;}
+  .field input::placeholder{color:var(--mut);}
+  .field.pickup{border-left:3px solid var(--yellow);} .field.drop{border-left:3px solid var(--green);}
+  .types{display:flex;gap:7px;margin-top:10px;}
+  .tp{flex:1;text-align:center;padding:9px 4px;border-radius:10px;border:1px solid var(--line);cursor:pointer;}
+  .tp .n{font-size:12px;font-weight:700;letter-spacing:1px;}
+  .tp .p{font-size:11px;color:var(--mut);margin-top:2px;}
+  .tp.on.normal{border-color:var(--green);background:rgba(34,197,94,.12);}
+  .tp.on.smart{border-color:var(--blue);background:rgba(46,107,255,.12);}
+  .tp.on.premium{border-color:var(--yellow);background:rgba(255,193,7,.12);}
+  .est{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:0 2px;}
+  .est .f{font-family:'Sora';font-size:26px;font-weight:800;color:var(--yellow);}
+  .btn{width:100%;margin-top:12px;padding:15px;border:none;border-radius:11px;font-family:inherit;font-weight:800;font-size:15px;letter-spacing:1.5px;cursor:pointer;background:var(--yellow);color:var(--bg);}
+  .btn:disabled{background:var(--line);color:var(--mut);}
+  .btn.cancel{background:transparent;border:1px solid var(--red);color:var(--red);}
+  .status-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+  .pulse{width:9px;height:9px;border-radius:50%;background:var(--yellow);box-shadow:0 0 8px var(--yellow);animation:pl 1.3s infinite;}
+  @keyframes pl{0%,100%{opacity:1;}50%{opacity:.3;}}
+  .meter-big{font-family:'Sora';font-size:34px;font-weight:800;color:var(--yellow);}
+  .toast{position:absolute;top:62px;left:50%;transform:translateX(-50%);z-index:999;background:rgba(11,14,20,.97);border:1px solid var(--yellow);color:var(--txt);padding:9px 18px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .3s;}
+  .toast.show{opacity:1;}
+  .hidden{display:none!important;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hdr">
+    <span class="mark">TAX<span style="color:var(--red)">!</span></span>
+    <div class="stripe"><i style="background:var(--yellow)"></i><i style="background:var(--blue)"></i><i style="background:var(--red)"></i></div>
+    <div style="margin-left:2px;"><div style="font-size:15px;font-weight:700;">Réserver un taxi</div><div class="sub">Casablanca</div></div>
+  </div>
+  <div id="mapwrap">
+    <div id="map"></div>
+    <div id="sheet"></div>
+    <div class="toast" id="toast"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL='https://gazieocibfftbstxefyj.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdhemllb2NpYmZmdGJzdHhlZnlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNDAyMDgsImV4cCI6MjA5NjYxNjIwOH0.IrUwdcdCYvKeCoSctJuSPUl1sfZ1U70TRMfkXjW1BAI';
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+const CENTER=[33.5899,-7.6039];
+const DH=10.4;
+let state={step:'set',pickup:null,drop:null,settingMode:'pickup',type:'normal',ride:null};
+
+const map=L.map('map',{zoomControl:false,attributionControl:false}).setView(CENTER,14);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'}).addTo(map);
+let pickupMk=null,dropMk=null,taxiMk=null,routeLine=null;
+
+let toastT;function toast(m){const e=document.getElementById('toast');e.textContent=m;e.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove('show'),3000);}
+
+// tap map to set pickup, then destination
+map.on('click',e=>{
+  if(state.step!=='set')return;
+  const pt=[e.latlng.lat,e.latlng.lng];
+  if(state.settingMode==='pickup'){
+    state.pickup=pt;
+    if(pickupMk)map.removeLayer(pickupMk);
+    pickupMk=L.marker(pt,{icon:L.divIcon({className:'',html:'<div class="me-mk"></div>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(map);
+    state.settingMode='drop';toast('Maintenant, touchez votre destination');
+  }else{
+    state.drop=pt;
+    if(dropMk)map.removeLayer(dropMk);
+    dropMk=L.marker(pt,{icon:L.divIcon({className:'',html:'<div class="pin-mk"></div>',iconSize:[22,22],iconAnchor:[11,22]})}).addTo(map);
+  }
+  estimate();renderSheet();
+});
+
+async function getRoute(a,b){
+  try{const u=`https://router.project-osrm.org/route/v1/driving/${a[1]},${a[0]};${b[1]},${b[0]}?overview=full&geometries=geojson`;
+    const r=await(await fetch(u)).json();
+    if(r.routes&&r.routes[0])return{coords:r.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]),distance:r.routes[0].distance};
+  }catch(e){}return{coords:[a,b],distance:map.distance(a,b)};
+}
+let estKm=0;
+async function estimate(){
+  if(!state.pickup||!state.drop)return;
+  const r=await getRoute(state.pickup,state.drop);
+  estKm=r.distance/1000;
+  if(routeLine)map.removeLayer(routeLine);
+  routeLine=L.polyline(r.coords,{color:'#22C55E',weight:4,opacity:.7,dashArray:'6,6'}).addTo(map);
+  map.fitBounds(L.latLngBounds([state.pickup,state.drop]).pad(0.3));
+  renderSheet();
+}
+function fareFor(type){const base=7,mult=type==='premium'?1.6:type==='smart'?0.9:1;return Math.max(base,Math.round((base+estKm*DH)*mult));}
+
+async function requestRide(){
+  if(!state.pickup||!state.drop)return;
+  const fare=fareFor(state.type);
+  const {data,error}=await sb.from('rides').insert({
+    rider_name:'Rider',
+    pickup_name:'Point de départ',pickup_lat:state.pickup[0],pickup_lng:state.pickup[1],
+    drop_name:'Destination',drop_lat:state.drop[0],drop_lng:state.drop[1],
+    fare,ride_type:state.type,status:'waiting'
+  }).select().single();
+  if(error){toast('Erreur — réessayez');console.error(error);return;}
+  state.ride=data;state.step='waiting';renderSheet();
+  toast('Recherche d\'un taxi…');
+  // listen for a driver accepting / progressing
+  sb.channel('myride-'+data.id).on('postgres_changes',
+    {event:'UPDATE',schema:'public',table:'rides',filter:'id=eq.'+data.id},
+    payload=>{onRideUpdate(payload.new);}).subscribe();
+}
+
+function onRideUpdate(row){
+  state.ride=row;
+  if(row.status==='accepted'){state.step='accepted';toast('Taxi en route vers vous !');}
+  else if(row.status==='onboard'){state.step='onboard';toast('Bon voyage !');}
+  else if(row.status==='completed'){state.step='done';toast('Arrivé — merci !');}
+  renderSheet();
+}
+
+async function cancelRide(){
+  if(state.ride)await sb.from('rides').update({status:'cancelled'}).eq('id',state.ride.id);
+  resetAll();
+}
+function resetAll(){
+  state={step:'set',pickup:null,drop:null,settingMode:'pickup',type:'normal',ride:null};
+  [pickupMk,dropMk,routeLine,taxiMk].forEach(m=>{if(m)map.removeLayer(m);});
+  pickupMk=dropMk=routeLine=taxiMk=null;estKm=0;
+  map.setView(CENTER,14);renderSheet();
+}
+window.requestRide=requestRide;window.cancelRide=cancelRide;window.resetAll=resetAll;
+window.setType=t=>{state.type=t;renderSheet();};
+window.setMode=m=>{state.settingMode=m;toast(m==='pickup'?'Touchez votre position':'Touchez votre destination');};
+
+function renderSheet(){
+  const s=document.getElementById('sheet');
+  if(state.step==='set'){
+    const ready=state.pickup&&state.drop;
+    s.innerHTML=`<div class="card">
+      <div class="lbl">VOTRE TRAJET</div>
+      <div class="field pickup" onclick="setMode('pickup')"><span class="ic">📍</span>
+        <input readonly placeholder="Touchez la carte pour le départ" value="${state.pickup?'Point de départ défini':''}"></div>
+      <div class="field drop" onclick="setMode('drop')"><span class="ic">🏁</span>
+        <input readonly placeholder="Touchez la carte pour la destination" value="${state.drop?'Destination définie':''}"></div>
+      <div class="types">
+        ${['normal','smart','premium'].map(t=>`<div class="tp ${t} ${state.type===t?'on':''}" onclick="setType('${t}')">
+          <div class="n">${t.toUpperCase()}</div><div class="p">${ready?fareFor(t)+' DH':'—'}</div></div>`).join('')}
+      </div>
+      ${ready?`<div class="est"><span class="sub">${estKm.toFixed(1)} km estimés</span><span class="f">${fareFor(state.type)} DH</span></div>`:''}
+      <button class="btn" ${ready?'':'disabled'} onclick="requestRide()">${ready?'COMMANDER LE TAXI':'DÉFINISSEZ LE TRAJET'}</button>
+    </div>`;
+  }else if(state.step==='waiting'){
+    s.innerHTML=`<div class="card">
+      <div class="status-row"><div class="pulse"></div><div style="font-size:17px;font-weight:700;">Recherche d'un taxi…</div></div>
+      <div class="sub">Diffusion aux taxis à proximité</div>
+      <div class="est"><span class="sub">Tarif estimé</span><span class="f">${state.ride.fare} DH</span></div>
+      <button class="btn cancel" onclick="cancelRide()">ANNULER</button>
+    </div>`;
+  }else if(state.step==='accepted'||state.step==='onboard'){
+    s.innerHTML=`<div class="card">
+      <div class="status-row"><div class="pulse" style="background:var(--green);box-shadow:0 0 8px var(--green);"></div>
+        <div style="font-size:17px;font-weight:700;">${state.step==='accepted'?'Taxi en route vers vous':'En route — compteur actif'}</div></div>
+      <div class="lbl" style="margin-top:10px;">COMPTEUR</div>
+      <div class="meter-big">${state.ride.fare} DH</div>
+      <div class="sub" style="margin-top:4px;">Tarif transparent · vérifié par GPS</div>
+      <button class="btn cancel" onclick="cancelRide()">ANNULER</button>
+    </div>`;
+  }else if(state.step==='done'){
+    s.innerHTML=`<div class="card" style="text-align:center;">
+      <div style="font-size:34px;">✅</div>
+      <div style="font-size:18px;font-weight:700;margin-top:6px;">Course terminée</div>
+      <div class="meter-big" style="margin-top:8px;">${state.ride.fare} DH</div>
+      <button class="btn" onclick="resetAll()">NOUVELLE COURSE</button>
+    </div>`;
+  }
+}
+renderSheet();
+setTimeout(()=>map.invalidateSize(),120);
+window.addEventListener('resize',()=>map.invalidateSize());
+</script>
+</body>
+</html>
