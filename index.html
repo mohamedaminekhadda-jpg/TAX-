@@ -115,10 +115,25 @@
   .pool-chip .pf{font-family:'Sora';font-weight:800;color:var(--go-soft);font-size:15px;}
 
   /* ---- Bottom sheet ---- */
-  #sheet{position:absolute;left:0;right:0;bottom:0;z-index:600;padding:40px 14px 18px;max-height:62%;overflow-y:auto;
-    overscroll-behavior:contain;-webkit-overflow-scrolling:touch;pointer-events:none;
-    background:linear-gradient(180deg,rgba(10,12,16,0),rgba(10,12,16,.55) 30%,var(--bg) 60%);}
-  #sheet>*{pointer-events:auto;}
+  #sheet{position:absolute;left:0;right:0;bottom:0;z-index:600;padding:0 12px 0;
+    background:linear-gradient(180deg,rgba(10,12,16,0),rgba(10,12,16,.55) 22%,var(--bg) 48%);
+    transition:max-height .45s var(--ease), transform .45s var(--ease);
+    overflow:hidden;}
+  /* peek = compact (map stays visible); expanded = full list; hidden = tucked away */
+  #sheet.peek{max-height:42%;}
+  #sheet.expanded{max-height:78%;}
+  #sheet.hidden-sheet{transform:translateY(calc(100% - 46px));}
+  #sheetBody{max-height:calc(78vh - 46px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-bottom:16px;}
+  .sheet-handle{padding:10px 0 6px;cursor:pointer;display:flex;justify-content:center;position:sticky;top:0;}
+  .sheet-handle .grab{margin:0;width:42px;height:5px;}
+
+  /* Floating map controls */
+  .map-ctrls{position:absolute;top:12px;right:12px;z-index:560;display:flex;flex-direction:column;gap:8px;}
+  .mc{width:44px;height:44px;border-radius:14px;border:1px solid var(--stroke-hi);background:var(--glass);backdrop-filter:blur(20px) saturate(1.3);
+    font-size:19px;cursor:pointer;box-shadow:var(--shadow);transition:transform .2s var(--ease),background .25s,border-color .25s;}
+  .mc:active{transform:scale(.9);}
+  .mc.on{background:linear-gradient(135deg,var(--amber-soft),var(--amber));border-color:transparent;box-shadow:0 6px 20px var(--amber-glow);}
+  .heat-opt.on{background:linear-gradient(135deg,#ff9a4d,#ff6a3d);border-color:transparent;box-shadow:0 6px 20px rgba(255,106,61,.4);}
   .card{background:var(--glass);backdrop-filter:blur(28px) saturate(1.3);border:1px solid var(--stroke-hi);border-radius:var(--r-lg);
     padding:18px;box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.07);
     animation:sheetRise .55s var(--ease);}
@@ -152,9 +167,10 @@
   .complete{width:100%;padding:16px;background:linear-gradient(135deg,var(--amber-soft),var(--amber));color:#0A0C10;font-weight:800;
     box-shadow:0 8px 24px var(--amber-glow);}
   .ride{background:var(--glass);backdrop-filter:blur(20px);border:1px solid var(--stroke);border-radius:var(--r-md);padding:13px 15px;margin-bottom:9px;
-    display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:all .3s var(--ease);
+    display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;transition:all .3s var(--ease);
     animation:sheetRise .5s var(--ease) backwards;}
   .ride:active{transform:scale(.98);border-color:var(--stroke-hi);}
+  .chev{font-size:22px;color:var(--txt3);font-weight:300;flex-shrink:0;}
   .compass{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:7px;}
   .compass.fwd{background:rgba(52,209,122,.15);color:var(--go-soft);}
   .compass.det{background:rgba(62,123,255,.15);color:#8fb0ff;}
@@ -241,7 +257,6 @@
     <div class="toggles">
       <div class="seg">
         <button class="chip auto" id="autoBtn">✦ Auto-pilote</button>
-        <button class="chip" id="ghostBtn">👥 Démo</button>
         <span class="chip" style="cursor:default;"><b id="cnt" style="color:var(--amber)">0</b>&nbsp;à proximité</span>
       </div>
       <button class="duty" id="duty"><span class="dot"></span><span id="dutyTxt">En ligne</span></button>
@@ -251,13 +266,24 @@
   <div id="mapwrap">
   <div id="map"></div>
 
+  <!-- Floating map controls (don't cover the map) -->
+  <div class="map-ctrls">
+    <button class="mc heat-opt" data-mode="demand" onclick="setHeat('demand')" title="Densité clients">🔥</button>
+    <button class="mc heat-opt" data-mode="money" onclick="setHeat('money')" title="Zones à fort revenu">💰</button>
+    <button class="mc" id="ghostBtnMap" onclick="toggleGhostsMap()" title="Clients démo">👥</button>
+  </div>
+
   <div id="meter">
     <div><div class="m-lbl">COMPTEUR</div><div class="m-fare disp num" id="mFare">0 DH</div></div>
     <div class="m-div"></div>
     <div class="m-eta" id="mEta"></div>
   </div>
 
-  <div id="sheet"></div>
+  <!-- Collapsible bottom sheet: handle toggles peek/expanded -->
+  <div id="sheet" class="peek">
+    <div class="sheet-handle" onclick="toggleSheet()"><div class="grab"></div></div>
+    <div id="sheetBody"></div>
+  </div>
   <div class="toast" id="toast"></div>
 
   <div class="pop" id="pop">
@@ -326,6 +352,29 @@ function startLocationBroadcast(){
 // Casablanca center
 const CENTER=[33.5899,-7.6039];
 const DRIVER_START=[33.5899,-7.6039];
+
+// Casablanca zones: real neighborhoods, rough lat/lng, demand weight (riders),
+// and money level (avg fare potential). Used for ghost spawning + heatmap.
+const ZONES=[
+  {n:"Centre-ville / Mohammed V", lat:33.5930, lng:-7.6190, demand:0.95, money:0.7},
+  {n:"Maârif",                    lat:33.5860, lng:-7.6320, demand:0.9,  money:0.85},
+  {n:"Gauthier",                  lat:33.5950, lng:-7.6250, demand:0.8,  money:0.9},
+  {n:"Gare Casa-Port",            lat:33.5993, lng:-7.6087, demand:0.85, money:0.6},
+  {n:"Gare Casa-Voyageurs",       lat:33.5870, lng:-7.5560, demand:0.75, money:0.65},
+  {n:"Habous",                    lat:33.5790, lng:-7.6120, demand:0.55, money:0.45},
+  {n:"Derb Ghallef",              lat:33.5790, lng:-7.6230, demand:0.7,  money:0.4},
+  {n:"Anfa",                      lat:33.5880, lng:-7.6520, demand:0.6,  money:0.95},
+  {n:"Aïn Diab / Corniche",       lat:33.5970, lng:-7.6760, demand:0.65, money:0.9},
+  {n:"Morocco Mall",              lat:33.5760, lng:-7.7050, demand:0.6,  money:0.85},
+  {n:"Sidi Maârouf",              lat:33.5370, lng:-7.6560, demand:0.7,  money:0.75},
+  {n:"Ain Sebaâ",                 lat:33.6050, lng:-7.5300, demand:0.6,  money:0.5},
+  {n:"Hay Hassani",               lat:33.5640, lng:-7.6620, demand:0.65, money:0.4},
+  {n:"Oulfa",                     lat:33.5520, lng:-7.6730, demand:0.55, money:0.4},
+  {n:"Sbata",                     lat:33.5680, lng:-7.5960, demand:0.6,  money:0.4},
+  {n:"Roches Noires",             lat:33.6010, lng:-7.5760, demand:0.5,  money:0.5},
+  {n:"Bourgogne",                 lat:33.5990, lng:-7.6420, demand:0.7,  money:0.8},
+  {n:"Bernoussi",                 lat:33.6130, lng:-7.5050, demand:0.5,  money:0.4},
+];
 const DH=10.4; // pseudo dirham-per-km factor for meter
 
 const RIDERS=[]; // live ride requests now load from the Supabase database
@@ -381,26 +430,46 @@ let state={riders:[...RIDERS],selected:null,active:null,phase:"idle",online:true
   detour:null,pooled:null,paused:false,pendingPop:null,popKind:null,detourOffered:false,landingFired:false};
 
 // ---- Ghost riders (demo bots) — fake ride requests so the map feels alive ----
-const GHOST_RIDER_NAMES=["Yasmine D.","Omar K.","Salma B.","Reda T.","Imane F.","Mehdi A.","Nadia L.","Karim O.","Sofia M.","Anas H."];
-function makeGhostRiders(center,count){
+const GHOST_RIDER_NAMES=["Yasmine D.","Omar K.","Salma B.","Reda T.","Imane F.","Mehdi A.","Nadia L.","Karim O.","Sofia M.","Anas H.","Hicham R.","Loubna E.","Tarik B.","Ghita M."];
+
+// pick a zone weighted by its demand, so busy areas get more riders
+function pickZone(){
+  const total=ZONES.reduce((s,z)=>s+z.demand,0);
+  let r=Math.random()*total;
+  for(const z of ZONES){ r-=z.demand; if(r<=0) return z; }
+  return ZONES[0];
+}
+// snap a point to the nearest road using OSRM /nearest (keeps ghosts off the sea)
+async function snapToRoad(pt){
+  try{
+    const u=`https://router.project-osrm.org/nearest/v1/driving/${pt[1]},${pt[0]}?number=1`;
+    const r=await(await fetch(u)).json();
+    if(r&&r.waypoints&&r.waypoints[0]){const l=r.waypoints[0].location;return [l[1],l[0]];}
+  }catch(e){}
+  return pt;
+}
+
+function makeGhostRiders(_center,count){
   const out=[];
   for(let i=0;i<count;i++){
-    const dLat=(Math.random()-0.5)*0.03, dLng=(Math.random()-0.5)*0.034;
-    const pickup=[center[0]+dLat, center[1]+dLng];
-    // destination somewhere else in the city
-    const dropoff=[center[0]+(Math.random()-0.5)*0.06, center[1]+(Math.random()-0.5)*0.06];
+    const z=pickZone();
+    // tight scatter around the zone centre (~200-600m) so they sit in the neighborhood
+    const pickup=[z.lat+(Math.random()-0.5)*0.012, z.lng+(Math.random()-0.5)*0.013];
+    const dz=pickZone();
+    const dropoff=[dz.lat+(Math.random()-0.5)*0.012, dz.lng+(Math.random()-0.5)*0.013];
     const pr=nearestRepere(pickup[0],pickup[1]);
     const dr=nearestRepere(dropoff[0],dropoff[1]);
     const km=map.distance(pickup,dropoff)/1000;
-    const types=['normal','normal','smart','premium'];
-    const type=types[Math.floor(Math.random()*types.length)];
+    const type=['normal','normal','smart','premium'][Math.floor(Math.random()*4)];
+    // fare leans higher in high-money zones
+    const moneyBoost=1+(z.money-0.5)*0.5;
     out.push({
-      id:'g'+Date.now()+i,
-      ghost:true,
+      id:'g'+Date.now()+'_'+i,
+      ghost:true, zone:z.n,
       name:GHOST_RIDER_NAMES[Math.floor(Math.random()*GHOST_RIDER_NAMES.length)],
       pickup, pickupName:pr.name, repere:pr.name, repereM:pr.meters,
       dropoff, dropName:dr.name,
-      fare:Math.max(7,Math.round(7+km*DH*(type==='premium'?1.5:type==='smart'?0.9:1))),
+      fare:Math.max(7,Math.round((7+km*DH*(type==='premium'?1.5:type==='smart'?0.9:1))*moneyBoost)),
       pax:1+Math.floor(Math.random()*3),
       rating:+(4.4+Math.random()*0.6).toFixed(1), trips:Math.floor(Math.random()*200),
       type, onRoute:true
@@ -408,18 +477,54 @@ function makeGhostRiders(center,count){
   }
   return out;
 }
+// snap all current ghost pickups to roads (async, updates markers when done)
+async function snapGhostsToRoads(){
+  const gs=state.riders.filter(r=>r.ghost);
+  for(const g of gs){
+    const snapped=await snapToRoad(g.pickup);
+    g.pickup=snapped; g.repere=nearestRepere(snapped[0],snapped[1]).name; g.pickupName=g.repere;
+  }
+  renderMarkers();
+}
 function refreshGhostRiders(){
   if(state.showGhosts===false||state.active){return;}
   const center=state.driverPos||DRIVER_START;
   // keep only DB (string-id) riders, replace ghost ones
   const dbRiders=state.riders.filter(r=>!r.ghost);
-  state.riders=[...dbRiders, ...makeGhostRiders(center, 7+Math.floor(Math.random()*4))];
+  state.riders=[...dbRiders, ...makeGhostRiders(center, 12+Math.floor(Math.random()*6))];
   renderMarkers();renderSheet();
+  snapGhostsToRoads();          // pull each onto the nearest real road
 }
+
+// ---- Heatmap overlay: density of riders / money per zone ----
+let heatLayers=[], heatMode='off'; // off | demand | money
+function heatColor(v){
+  if(v<0.5){ const t=v/0.5; return `${Math.round(52+(255-52)*t)},${Math.round(209+(176-209)*t)},${Math.round(122-122*t)}`; }
+  const t=(v-0.5)/0.5; return `255,${Math.round(176-86*t)},0`;
+}
+function renderHeat(){
+  heatLayers.forEach(l=>map.removeLayer(l));heatLayers=[];
+  if(heatMode==='off')return;
+  ZONES.forEach(z=>{
+    const v = heatMode==='demand'?z.demand:z.money;
+    const rgb=heatColor(v);
+    [ {r:1500,a:0.08},{r:1000,a:0.14},{r:560,a:0.22} ].forEach(ring=>{
+      const c=L.circle([z.lat,z.lng],{radius:ring.r,stroke:false,fillColor:`rgb(${rgb})`,fillOpacity:ring.a*(0.5+v*0.5),interactive:false}).addTo(map);
+      heatLayers.push(c);
+    });
+  });
+}
+window.setHeat=(mode)=>{
+  heatMode = (heatMode===mode)?'off':mode;
+  document.querySelectorAll('.heat-opt').forEach(b=>b.classList.toggle('on', b.dataset.mode===heatMode));
+  renderHeat();
+  toast(heatMode==='off'?'Heatmap masquée':(heatMode==='demand'?'Densité des clients':'Zones à fort revenu'));
+};
+
 
 
 // Map
-const map=L.map('map',{zoomControl:false,attributionControl:false}).setView(CENTER,14);
+const map=L.map('map',{zoomControl:false,attributionControl:false}).setView(CENTER,12);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'}).addTo(map);
 L.control.zoom({position:'bottomright'}).addTo(map);
 
@@ -512,7 +617,9 @@ function updateMeterEta(sec){
 // ---- preview on select ----
 function clearPreview(){if(previewLine){map.removeLayer(previewLine);previewLine=null;}if(previewDest){map.removeLayer(previewDest);previewDest=null;}}
 async function selectRider(r){
-  state.selected=r;renderMarkers();renderSheet();clearPreview();
+  state.selected=r;
+  const sh=document.getElementById('sheet'); if(sh)sh.className='expanded';
+  renderMarkers();renderSheet();clearPreview();
   previewDest=L.marker(r.dropoff,{icon:L.divIcon({className:'',html:'<div class="dest-mk">🏁</div>',iconSize:[22,22],iconAnchor:[11,11]})}).addTo(map);
   const pv=await getRoute(r.pickup,r.dropoff);
   if(state.selected?.id===r.id){
@@ -520,7 +627,8 @@ async function selectRider(r){
     map.fitBounds(L.latLngBounds([r.pickup,r.dropoff]).pad(0.35),{animate:true});
   }
 }
-function selectRiderById(id){const r=state.riders.find(x=>x.id===id);if(r)selectRider(r);}
+function selectRiderById(id){const r=state.riders.find(x=>String(x.id)===String(id));if(r)selectRider(r);}
+window.selectRiderById=selectRiderById;
 
 // ---- accept / drive ----
 async function acceptRide(){
@@ -921,20 +1029,28 @@ document.getElementById('autoBtn').onclick=()=>{
   toast(state.auto?'Auto-Pilot activé — scan automatique':'Auto-Pilot désactivé');
   if(state.auto)autoPick();
 };
-// demo ghost riders toggle
-const ghostBtn=document.getElementById('ghostBtn');
-ghostBtn.classList.toggle('on',state.showGhosts!==false);
-ghostBtn.onclick=()=>{
+// demo ghost riders toggle (now a floating map control)
+const ghostBtnMap=document.getElementById('ghostBtnMap');
+ghostBtnMap.classList.toggle('on',state.showGhosts!==false);
+window.toggleGhostsMap=()=>{
   state.showGhosts = state.showGhosts===false ? true : false;
-  ghostBtn.classList.toggle('on',state.showGhosts);
-  if(state.showGhosts){ refreshGhostRiders(); toast('Demandes démo affichées'); }
-  else { state.riders=state.riders.filter(r=>!r.ghost); renderMarkers(); renderSheet(); toast('Demandes démo masquées'); }
+  ghostBtnMap.classList.toggle('on',state.showGhosts);
+  if(state.showGhosts){ refreshGhostRiders(); toast('Clients démo affichés'); }
+  else { state.riders=state.riders.filter(r=>!r.ghost); renderMarkers(); renderSheet(); toast('Clients démo masqués'); }
+};
+// collapsible sheet
+window.toggleSheet=()=>{
+  const sh=document.getElementById('sheet');
+  if(sh.classList.contains('expanded')) sh.className='peek';
+  else if(sh.classList.contains('peek')) sh.className='expanded';
+  else sh.className='peek';
+  setTimeout(()=>map.invalidateSize(),460);
 };
 
 // ---- sheet ----
 function seatHtml(n){let h='<div class="seats">';for(let i=0;i<3;i++)h+=`<div class="seat ${i<n?'full':''}"></div>`;h+='</div>';return h;}
 function renderSheet(){
-  const s=document.getElementById('sheet');
+  const s=document.getElementById('sheetBody');
   document.getElementById('cnt').textContent=state.riders.length;
   if(!state.online){s.innerHTML=`<div class="card" style="text-align:center;padding:32px 18px;"><div class="grab"></div><div style="font-size:36px;opacity:.5;">🌙</div><div style="font-size:16px;margin-top:10px;font-weight:700;">Vous êtes hors ligne</div><div class="sub" style="margin-top:5px;">Passez en ligne pour recevoir des courses.</div></div>`;return;}
   if(state.active){
@@ -993,17 +1109,18 @@ function renderSheet(){
   }
   if(state.riders.length===0){s.innerHTML=`<div class="card" style="text-align:center;padding:30px 18px;"><div class="grab"></div><div style="font-size:30px;opacity:.5;">🚕</div><div style="margin-top:10px;font-weight:600;">Aucune course pour l'instant</div><div class="sub" style="margin-top:4px;">Les demandes apparaîtront ici dès qu'un client réserve.</div></div>`;return;}
   s.innerHTML=`<div class="lbl" style="margin:0 4px 11px;">${state.riders.length} course${state.riders.length>1?'s':''} à proximité</div>`+
-    state.riders.map((r,i)=>`<div class="ride" style="animation-delay:${i*0.05}s" onclick='selectRiderById(${r.id})'>
-      <div>
+    state.riders.map((r,i)=>`<div class="ride" style="animation-delay:${i*0.05}s" onclick="selectRiderById('${r.id}')">
+      <div style="flex:1;min-width:0;">
         <div style="font-weight:700;font-size:16px;display:flex;align-items:center;gap:7px;letter-spacing:-0.01em;">${r.name}
           <span class="compass ${r.onRoute?'fwd':'det'}">${r.onRoute?'➡️':'↩️'}</span></div>
-        <div class="sub" style="margin-top:3px;">📍 ${r.repere}</div>
+        <div class="sub" style="margin-top:3px;">📍 ${r.repere}${r.zone?` · ${r.zone}`:''}</div>
         <div style="font-size:11px;color:var(--txt3);margin-top:1px;">→ ${r.dropName} · ${r.pax}👤</div>
       </div>
-      <div style="text-align:right;min-width:62px;">
+      <div style="text-align:right;min-width:58px;">
         <div style="font-family:'Sora';font-size:18px;font-weight:800;color:var(--amber);letter-spacing:-0.02em;">${r.fare} DH</div>
         <div style="font-size:10px;color:${typeColor(r.type)};font-weight:600;margin-top:3px;text-transform:capitalize;">${r.type}</div>
-      </div></div>`).join('');
+      </div>
+      <div class="chev">›</div></div>`).join('');
 }
 
 // ---- LIVE DATA: load ride requests from your Supabase database ----
